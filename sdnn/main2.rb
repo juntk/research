@@ -2,7 +2,7 @@
 class Network
     def initialize
         @currentPath = './sdnn'
-        @symbolPath = @currentPath + '/Symbol.txt
+        @symbolPath = @currentPath + '/Symbol.txt'
 
     end
     def initialize

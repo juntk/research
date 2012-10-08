@@ -3,7 +3,7 @@ require 'sdnn/network.rb'
 class Main
     def initialize
         # 出力層の素子数 
-        @outputElementNum = 25
+        @outputElementNum = 46
         puts '出力層の素子数:' + @outputElementNum.to_s
         puts
         @n = Network.new(@outputElementNum)
@@ -53,8 +53,8 @@ class Main
         return result
     end
     def test()
-        @body = [[1,2,3,4,10],[5,6,1,2,14],[3,4,5,6,18],[4,2,1,5,12],[5,2,4,1,12]]
-        @body += [[7,2,4,3,16],[3,4,5,2,14],[9,1,2,4,16],[4,1,3,6,13],[7,4,3,1,15]]
+        @body = [[1,2,3,4,10],[5,6,7,8,12],[9,10,11,12,13],[13,14,15,16,15],[17,18,19,20,17]]
+        @body += [[25,26,27,28,19],[29,30,31,32,20],[33,34,35,36,21],[37,38,39,40,22],[41,42,43,44,23]]
         10000.times do |m|
             puts (m+1).to_s + '回目の学習'
             day1 = Time.now
@@ -69,7 +69,7 @@ class Main
                 if y == @teacher then
                     print '***学習完了***',",\t"
                 else
-                    learningRate = 0.1
+                    learningRate = 0.99 
                     @outputLayer = learnTest(@inputLayer, @outputLayer, @teacher, y, learningRate, @n)
                     y = checkTest(@inputLayer, @outputLayer, @n)
                     print '修正後:' + y.to_s,",\t"
@@ -83,6 +83,14 @@ class Main
             mins = hours[1].divmod(60)
             secs = mins[1].divmod(60)
             print '学習時間:', secs[1],'秒'
+            puts 'Ex)'
+                @inputLayer = [21,22,23,24]
+                @teacher = 18
+                print '入力:[' + @inputLayer.join(',') + ']',",\t"
+
+                y = checkTest(@inputLayer, @outputLayer, @n, m)
+                print '教師値:' + @teacher.to_s,",\t"
+                print '修正前:' + y.to_s,', '
             puts
             puts
         end
