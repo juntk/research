@@ -9,7 +9,7 @@ class Sdnn
         puts '出力層の素子数:' + @outputElementNum.to_s
         puts
         @n = Network.new(@outputElementNum)
-        @inputLayer = [1,1,1,1]
+        @inputLayer = [1,1]
         @middleLayer = @n.makeMiddleLayer(@inputLayer)
         @outputLayer = @n.makeOutputLayer(@middleLayer)
         @teacher = 0

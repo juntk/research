@@ -54,7 +54,22 @@ class Test
 		@group.add_constraint(@line)
 		@group.add_constraint(@line2)
 		APEngine.add_group(@group)
+
+        # start
+        startButton = TkButton.new(:text=> 'start')
+        startButton.command {
+            @run = true
+        }
+        startButton.pack(:side=>'right')
+
+        # stop
+        stopButton = TkButton.new(:text=> 'stop')
+        stopButton.command {
+            @run = false
+        }
+        stopButton.pack(:side=>'right')
         
+        # power
         powerButton = TkButton.new(:text=> 'power')
         powerButton.command {
             tmp = @c.velocity
@@ -70,7 +85,8 @@ class Test
             end
             @c.velocity = (Pongo::Vector.new(tmp.x, tmp.y))
         }
-        powerButton.pack
+        powerButton.pack(:side=>'right')
+
 	end
 
     def addForce()
@@ -117,10 +133,13 @@ class Test
     end
 
 	def run()
+        @count = 0
 		TkTimer.start(10) do |anime|
 			begin
-				APEngine.step
-				APEngine.draw
+                if @run then
+                    APEngine.step
+                    APEngine.draw
+                end
 
                 a = @group.particles[0].curr
                 b = @group.particles[1].curr
@@ -154,6 +173,8 @@ class Test
                                     :text=>r1.to_i.to_s)
                 @buf << TkcText.new(@canvas, textPosBX, b.y+80,
                                     :text=>r2.to_i.to_s)
+            @canvas.postscript(:file => 'tmp'+@count.to_s+'.ps')
+            @count += 1
 			rescue
 				APEngine.log($1)
 			end

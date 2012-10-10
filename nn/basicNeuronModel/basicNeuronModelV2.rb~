@@ -1,5 +1,5 @@
 #encoding:utf-8
-require "./nn/base.rb"
+require "../../nn/base.rb"
 
 """
 ニューロンのモデル

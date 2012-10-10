@@ -54,7 +54,7 @@ symbols = {}
     symbols[t.to_s] = tmp
 end
 
-#p symbols
+p symbols
 
 # save as a file
 body = ''
