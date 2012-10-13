@@ -1,5 +1,5 @@
 #encoding:utf-8
-require "../../nn/base.rb"
+require "./nn/base.rb"
 
 """
 ニューロンのモデル
@@ -38,12 +38,14 @@ class BasicNeuronModel < Base
         end
         aIn.each_with_index do |lIn, i| 
             totalAmount += lIn * @weight[i];
+            print totalAmount, ' '
             """
             #dump {
                 p [:i=>i, :in=>lIn, :totalAmount=>totalAmount]
             # }
             """
         end
+            puts
         if totalAmount > @threshold then
             @output = 1
         else

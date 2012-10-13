@@ -5,6 +5,7 @@ require 'pongo/renderer/tk_renderer'
 require 'pongo/logger/standard_logger'
 require './sdnn/main.rb'
 require "./ReinforcementLearning/basicQLearning4.rb"
+require './simulation/MyThread.rb'
 
 include Pongo
 
@@ -12,7 +13,16 @@ class Test
 	attr_accessor :width, :height
 
 	def initialize
+        @thread = MyThread.new
+        @thread.threadConcurrency = 1
+        @thread.mode = 1
+        @checker = ''
+        @qValuePot = {}
+        @throwSet = [-1,-1]
         @sdnn = Sdnn.new
+        @radRate = 15
+        @r1Raw = @r2Raw = @r1Fix = @r2Fix = 0
+        @nowLearning = false
         @bql = BasicQLearning.new
         @bql.alpha = 0.5
         @bql.gamma = 0.5
@@ -22,7 +32,7 @@ class Test
 		@gravity = 9.8
 		@lineWidth = 150
         @addVelocity = 15
-        @learning = true
+        @enableLearning = true
 		root = TkRoot.new { title 'Acrobot' }
 		@canvas = TkCanvas.new(root, :width=>@width, :height=>@height)
 		@canvas.pack
@@ -80,7 +90,7 @@ class Test
             @b.velocity = Pongo::Vector.new(0,0)
             @c.velocity = Pongo::Vector.new(0,0)
             @run = true
-            @learning = true
+            @enableLearning = true
             @qvalue = true
         }
         startButtonLQ.pack(:side=>'right')
@@ -92,7 +102,7 @@ class Test
             @c.curr= Pongo::Vector.new(320,60+@lineWidth*2)
             @b.velocity = Pongo::Vector.new(0,0)
             @c.velocity = Pongo::Vector.new(0,0)
-            @learning = false
+            @enableLearning = false
             @qvalue = true
             @run = true
         }
@@ -105,7 +115,7 @@ class Test
             @c.curr= Pongo::Vector.new(320,60+@lineWidth*2)
             @b.velocity = Pongo::Vector.new(0,0)
             @c.velocity = Pongo::Vector.new(0,0)
-            @learning = false
+            @enableLearning = false
             @qvalue = false
             @run = true
         }
@@ -214,9 +224,151 @@ class Test
         elsif aQuadrant == 4 then
             tan += 90
         end
-        print aQuadrant, ':', tan
-        puts
         return tan
+    end
+    def learnAndSelect(obj)
+        r1Fix = obj[0]
+        r2Fix = obj[1]
+        r1Raw = obj[2]
+        r2Raw = obj[3]
+        radRate = obj[4]
+        qvalue = obj[5]
+        lineLength = obj[6]
+        line2Length = obj[7]
+        ax = obj[8]
+        bx = obj[9]
+        by = obj[10]
+        cx = obj[11]
+        cy = obj[12]
+        reward = obj[13]
+        addVelocity = obj[14]
+
+        p obj
+        # sdnn
+
+        """
+        if @qvalue == true and @b.curr.x <= 320 and @c.curr.x <= 320 and r1Fix.to_i % @radRate == 0 then
+        """
+        if qvalue == true and (r1Raw.to_i % radRate == 0 or r2Raw.to_i % radRate == 0) then
+
+            inputLayer = [lineLength.to_i/radRate, line2Length.to_i/radRate,r1Fix.to_i,  r2Fix.to_i]
+            if @tmpIL2 == inputLayer then
+                return
+            else
+                @tmpIL2 = inputLayer
+            end
+            if cy <= 60 or by <= 60 and @tmpILA != inputLayer and @enableLearning == true then
+                qValue = @sdnn.learning(inputLayer,reward)
+                @qValuePot[inputLayer.to_s] = qValue
+                @tmpILA = inputLayer
+                puts qValue
+            else
+                #test
+                @radRate2 = 1
+                pattern = []
+                pattern << [r1Fix+@radRate2, r2Fix, -1*addVelocity, 0]
+                pattern << [r1Fix+@radRate2, r2Fix+@radRate2, -1*addVelocity,-1*addVelocity]
+                pattern << [r1Fix, r2Fix+@radRate2, 0, -1*addVelocity]
+                pattern << [r1Fix-@radRate2, r2Fix, addVelocity, 0]
+                pattern << [r1Fix-@radRate2, r2Fix-@radRate2,addVelocity,addVelocity]
+                pattern << [r1Fix, r2Fix-@radRate2, 0, addVelocity]
+                max = 0
+                maxi = nil
+                print 'check sentaku'
+                pattern.shuffle.each_with_index do |v,i|
+                    if v[0] < 0 then
+                        v[0] = 0
+                    end
+                    if v[1] < 0 then
+                        v[1] = 0
+                    end
+                    tmpInputLayer = [lineLength.to_i/radRate, line2Length.to_i/radRate,v[0].to_i,  v[1].to_i]
+                    p tmpInputLayer
+
+                    p @qValuePot
+                    reward = @qValuePot[tmpInputLayer.to_s]
+                    print '!', reward
+                    puts
+                    if reward > max then
+                        max = reward
+                        maxi = i
+                    end
+                end
+            end
+                if maxi != nil and @tmpIL != inputLayer then
+                    if @enableLearning == true then
+                        oldQValue = @qValuePot[tmpInputLayer.to_s]
+                        print 'old',oldQValue
+                        puts
+                        newQValue = @bql.getNewQValue(oldQValue, 0, max).to_i
+                        print 'new', newQValue
+                        puts
+                        qValue = @sdnn.learning(inputLayer,newQValue)
+                        @qValuePot[inputLayer.to_s] = qValue
+                    end
+                end
+        end
+        
+        """
+        # up down hantei you
+        @upDownNew = @c.curr.y
+        if @upDownOld != nil then
+            if @upDownNew > @upDownOld then
+                @upDown = 'up'
+            else
+                @upDown = 'down'
+            end
+        end
+        @upDownOld = @upDownNew
+        """
+    end
+
+    def selectNext(r1Fix, r2Fix)
+        if @qvalue == true and (@r1Raw.to_i % @radRate == 0 or @r2Raw.to_i % @radRate == 0) then
+            @radRate2 = 1
+            pattern = []
+            pattern << [r1Fix+@radRate2, r2Fix, -1*@addVelocity, 0]
+            pattern << [r1Fix+@radRate2, r2Fix+@radRate2, -1*@addVelocity,-1*@addVelocity]
+            pattern << [r1Fix, r2Fix+@radRate2, 0, -1*@addVelocity]
+            pattern << [r1Fix-@radRate2, r2Fix, @addVelocity, 0]
+            pattern << [r1Fix-@radRate2, r2Fix-@radRate2,@addVelocity,@addVelocity]
+            pattern << [r1Fix, r2Fix-@radRate2, 0, @addVelocity]
+            max = 0
+            maxi = nil
+            pattern.shuffle.each_with_index do |v,i|
+                if v[0] < 0 then
+                    v[0] = 0
+                end
+                if v[1] < 0 then
+                    v[1] = 0
+                end
+                tmpInputLayer = [@lineLength.to_i/@radRate, @line2Length.to_i/@radRate,v[0].to_i,  v[1].to_i]
+                p tmpInputLayer
+
+                reward = @qValuePot[tmpInputLayer.to_s]
+
+                if reward != nil then
+                    puts
+                    if reward > max then
+                        max = reward
+                        maxi = i
+                    end
+                end
+            if maxi != nil then
+
+                nextP = pattern[maxi]
+                @c.velocity = (Pongo::Vector.new(nextP[2], nextP[2]))
+                @b.velocity = (Pongo::Vector.new(nextP[3], nextP[3]))
+                @tmpIL = @inputLayer
+                #addForce()
+            else
+                if @count < 5 then
+                    @c.velocity = Pongo::Vector.new(@c.velocity.x+10,@c.velocity.y)
+                    @b.velocity = Pongo::Vector.new(@b.velocity.x+5,@b.velocity.y)
+                end
+            end
+            end
+        end
     end
 
 	def run()
@@ -236,111 +388,50 @@ class Test
                 lineVector2 = getVector(b, c)
                 quadrant1 = getQuadrant2(a, b)
                 quadrant2 = getQuadrant2(b, c)
-                rn1 = getTan(lineVector1, quadrant1)
-                rn2 = getTan(lineVector2, quadrant1)
+                @r1Raw = getTan(lineVector1, quadrant1)
+                @r2Raw = getTan(lineVector2, quadrant1)
                 
-                # sdnn
-                rate = 30
-                r1 = rn1 / rate
-                r2 = rn2 / rate
 
-                puts r1.to_i % rate
-                """
-                if @qvalue == true and @b.curr.x <= 320 and @c.curr.x <= 320 and r1.to_i % rate == 0 then
-                """
-                if @qvalue == true and (rn1.to_i % rate == 0 or rn2.to_i % rate == 0) then
+                r1Fix = @r1Raw / @radRate
+                r2Fix = @r2Raw / @radRate
+                r1Fix = r1Fix.to_i
+                r2Fix = r2Fix.to_i
 
-                    @inputLayer = [@lineLength.to_i/rate, @line2Length.to_i/rate,r1.to_i,  r2.to_i]
-                    if @c.curr.y <= 60 or @b.curr.y <= 60 and @tmpILA != @inputLayer and @learning == true then
-                        qValue = @sdnn.learning(@inputLayer,@reward)
-                        drawQValue(qValue, @c.curr, @b.curr, @a.curr)
-                        @tmpILA = @inputLayer
-                        puts qValue
-                        @a.user_data[:shape].fill = '#FF0000'
-                        @b.user_data[:shape].fill = '#FF0000'
-                        @c.user_data[:shape].fill = '#FF0000'
-                        @line.p1.user_data[:shape].fill = '#FF0000'
-                        @line2.p1.user_data[:shape].fill = '#FF0000'
-                        @a.pack
-                    else
-                        p @line.p1
-                        @a.user_data[:shape].fill = '#000000'
-                        @b.user_data[:shape].fill = '#000000'
-                        @c.user_data[:shape].fill = '#000000'
-                        @line.p1.user_data[:shape].fill = '#000000'
-                        @line2.p1.user_data[:shape].fill = '#000000'
-                        #test
-                        rate2 = 1
-                        pattern = []
-                        pattern << [r1+rate2, r2, -1*@addVelocity, 0]
-                        pattern << [r1+rate2, r2+rate2, -1*@addVelocity,-1*@addVelocity]
-                        pattern << [r1, r2+rate2, 0, -1*@addVelocity]
-                        pattern << [r1-rate2, r2, @addVelocity, 0]
-                        pattern << [r1-rate2, r2-rate2,@addVelocity,@addVelocity]
-                        pattern << [r1, r2-rate2, 0, @addVelocity]
-                        max = 0
-                        maxi = nil
-                        print 'check sentaku'
-                        pattern.shuffle.each_with_index do |v,i|
-                            if v[0] < 0 then
-                                v[0] = 0
-                            end
-                            if v[1] < 0 then
-                                v[1] = 0
-                            end
-                            tmpInputLayer = [@lineLength.to_i/rate, @line2Length.to_i/rate,v[0].to_i,  v[1].to_i]
-                            p tmpInputLayer
-
-                            reward = @sdnn.checkTest(tmpInputLayer)
-                            print '!', reward
-                            puts
-                            if reward > max then
-                                max = reward
-                                maxi = i
-                            end
-                            if maxi != nil and @tmpIL != @inputLayer then
-                                if @learning == true then
-                                    oldQValue = @sdnn.checkTest(@inputLayer)
-                                    print 'old',oldQValue
-                                    puts
-                                    newQValue = @bql.getNewQValue(oldQValue, 0, max).to_i
-                                    print 'new', newQValue
-                                    puts
-                                    qValue = @sdnn.learning(@inputLayer,newQValue)
-                                    drawQValue(qValue, @c.curr, @b.curr, @a.curr)
-                                end
-
-                                nextP = pattern[maxi]
-                                @c.velocity = (Pongo::Vector.new(nextP[2], nextP[2]))
-                                @b.velocity = (Pongo::Vector.new(nextP[3], nextP[3]))
-                                @tmpIL = @inputLayer
-                                #addForce()
-                            end
-                        end
-                    end
-                else
-                    if @b.curr.y > 60 and @c.curr.y > 60 then
-                        @a.user_data[:shape].fill = '#000000'
-                        @b.user_data[:shape].fill = '#000000'
-                        @c.user_data[:shape].fill = '#000000'
-                        @line.p1.user_data[:shape].fill = '#000000'
-                        @line2.p1.user_data[:shape].fill = '#000000'
+                obj = [r1Fix, r2Fix, @r1Raw, @r2Raw, @radRate, @qvalue,@lineLength, @line2Length, @a.curr.x, @b.curr.x, @b.curr.y, @c.curr.x, @c.curr.y, @reward, @addVelocity]
+                methodObject = self.method(:learnAndSelect)
+                if @qvalue == true and (@r1Raw.to_i % @radRate == 0 or @r2Raw.to_i % @radRate == 0) then
+                    p @checker
+                    if @checker.to_s != [r1Fix, r2Fix].to_s then
+                        @thread.addThread(methodObject, obj)
+                        p @qValuePot
                     end
                 end
-                
-                # up down hantei you
-                @upDownNew = @c.curr.y
-                if @upDownOld != nil then
-                    if @upDownNew > @upDownOld then
-                        @upDown = 'up'
-                    else
-                        @upDown = 'down'
+                    if @checker.to_s != [r1Fix, r2Fix].to_s then
+                        selectNext(r1Fix, r2Fix)
                     end
+                @thread.controlThread()
+                        @checker = [r1Fix, r2Fix]
+                """
+                if r1Fix != @throwSet[0] and r2Fix != @throwSet[1] then
+                    selectNext(r1Fix, r2Fix)
                 end
-                @upDownOld = @upDownNew
-
+                """
 
                 # renderer
+                # change color when learning
+                if @nowLearning then
+                    @a.user_data[:shape].fill = '#FF0000'
+                    @b.user_data[:shape].fill = '#FF0000'
+                    @c.user_data[:shape].fill = '#FF0000'
+                    @line.p1.user_data[:shape].fill = '#FF0000'
+                    @line2.p1.user_data[:shape].fill = '#FF0000'
+                else
+                    @a.user_data[:shape].fill = '#000000'
+                    @b.user_data[:shape].fill = '#000000'
+                    @c.user_data[:shape].fill = '#000000'
+                    @line.p1.user_data[:shape].fill = '#000000'
+                    @line2.p1.user_data[:shape].fill = '#000000'
+                end
 
                 @buf.each do |v|
                     @canvas.delete(v)
@@ -359,19 +450,17 @@ class Test
                     textPosBX = b.x+15
                 end
                 @buf << TkcText.new(@canvas, textPosAX, a.y+80,
-                                    :text=>rn1.to_i.to_s)
+                                    :text=>@r1Raw.to_i.to_s)
                 @buf << TkcText.new(@canvas, textPosBX, b.y+80,
-                                    :text=>rn2.to_i.to_s)
+                                    :text=>@r2Raw.to_i.to_s)
                 @buf << TkcLine.new(@canvas, 0, @a.curr.y ,@width, @a.curr.y,:fill=> "#999999")
-                if qValue != nil then
-                end
                 @canvas.raise(@line.p1.user_data[:shape])
                 @canvas.raise(@line2.p1.user_data[:shape])
                 @canvas.raise(@a.user_data[:shape])
                 @canvas.raise(@b.user_data[:shape])
                 @canvas.raise(@c.user_data[:shape])
-            @canvas.postscript(:file => './ps/tmp'+@count.to_s+'.ps')
-            @count += 1
+                @canvas.postscript(:file => './ps/tmp'+@count.to_s+'.ps')
+                @count += 1
 			rescue
 				APEngine.log($!)
 			end

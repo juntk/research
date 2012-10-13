@@ -1,4 +1,4 @@
-symbolLength = 200
+symbolLength = 50
 
 def makeSymbol(aLength, aBefore=[])
     tmp = []

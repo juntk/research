@@ -7,7 +7,7 @@ class Network
         @currentPath = './sdnn'
         @symbolPath = @currentPath + '/Symbol.txt'
         @outputElementNum = aOutputElementNum
-        @thresholdGradient = 1.0*@outputElementNum
+        @thresholdGradient = 3.0*@outputElementNum
     end
     def encodeNumToSymbol(aNum)
         """ 数字をシンボル（±1）の羅列に変換 """
@@ -20,7 +20,6 @@ class Network
                 num = tmp[0]
                 symbol = tmp[1].to_s
                 symbolList = symbol.split(' ').map {|s|s.to_i}
-                p symbolList
                 symbolRelation[num] = symbolList
             end
         end
