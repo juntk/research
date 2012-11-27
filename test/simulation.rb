@@ -24,7 +24,6 @@ class Simulation
 
         @acrobot = Acrobot.new(@windowSize)
         
-        
         """
         SDNN
         """
@@ -32,7 +31,7 @@ class Simulation
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
         @sdnnReward = 60
-        @sdnnInterval = 10
+        @sdnnInterval = 30
 
         """
         Pongo
@@ -56,8 +55,10 @@ class Simulation
         """
         シミュレーション
         """
+        @timeLimit = 50
         @timeStart = nil
         @prevInput = nil
+        @speedJoint3 = 1.5
     end
     def initializeButton
         # start
@@ -104,6 +105,20 @@ class Simulation
         }
         buttonPower.pack(:side=>'right')
     end
+
+    def resetArms()
+        @acrobot.joint2.curr = Pongo::Vector.new(
+            @windowWidth/2,
+            @acrobot.armPositionByTop + @acrobot.arm1.length
+        )
+        @acrobot.joint3.curr = Pongo::Vector.new(
+            @windowWidth/2,
+            @acrobot.armPositionByTop + @acrobot.arm1.length + @acrobot.arm2.length
+        )
+        # 初期速度
+        @acrobot.joint2.velocity = Pongo::Vector.new(0,0)
+        @acrobot.joint3.velocity = Pongo::Vector.new(0,0)
+    end
     def run()
         TkTimer.start(10) do |timer|
             begin
@@ -113,10 +128,11 @@ class Simulation
                 APEngine.log("#{$!.message}\n#{$!.backtrace.join("\n")}")
             end
             begin
-                if @timeStart == nil or Time.now.to_i - @timeStart >= 50 then
+                if @timeStart == nil then
                     @timeStart = Time.now.to_i
-                    puts 'call'
-                    @acrobot.initializeArms()
+                elsif Time.now.to_i - @timeStart >= @timeLimit then
+                    @timeStart = Time.now.to_i
+                    resetArms()
                 end
                 # アクロボットのパラメータ表示
                 globalRads = @acrobot.getGlobalRadiusAtArms()
@@ -128,8 +144,7 @@ class Simulation
                 SDNN
                 """
                 # @sdnnIntervalごとにチェック
-                #if globalRads[0] % @sdnnInterval == 0 or globalRads[1] % @sdnnInterval == 0 then 
-                if globalRads[0] % @sdnnInterval == 0  then 
+                if globalRads[0] % @sdnnInterval == 0 or globalRads[1] % @sdnnInterval == 0 then 
                     rads = globalRads.map {|v|v=normalizationGlobalRadians(v)}
                     dump(rads, speeds, vectorSpeeds, angularVelocitys)
 
@@ -234,7 +249,7 @@ class Simulation
             vectorX = tmpX
             vectorY = tmpY
         end
-        @acrobot.joint3.velocity = Pongo::Vector.new(vectorX*2, vectorY*2)
+        @acrobot.joint3.velocity = Pongo::Vector.new(vectorX * @speedJoint3, vectorY * @speedJoint3)
         return 
     end
     def normalizationAngularVelocity(angularVelocity)
@@ -251,7 +266,7 @@ class Simulation
         """
         正規化
         """
-        globalRadians /= 10
+        globalRadians /= @sdnnInterval
         return globalRadians.to_i
     end
     def denormalizationGlobalRadians(normalizedGlobalRadians)

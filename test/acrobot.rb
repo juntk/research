@@ -125,12 +125,23 @@ class Acrobot < Pongo::Group
             :fixed=>true
         )
     end
-    def setForce(globalRadA, globalRadB)
-        """
-        """
-        x = Math.cos(rads[1])
-        y = Math.sin(rads[1])
-
+    def resetArms
+        @joint1.curr = Pongo::Vector.new(
+            @windowWidth/2,
+            @armPositionByTop + @arm1.length
+        )
+        @joint2.curr = Pongo::Vector.new(
+            @windowWidth/2,
+            @armPositionByTop + @arm1.length
+        )
+        @joint3.curr = Pongo::Vector.new(
+            @windowWidth/2,
+            @armPositionByTop + @arm1.length + @arm2.length
+        )
+        # 初期速度
+        @joint1.velocity = Pongo::Vector.new(0,0)
+        @joint2.velocity = Pongo::Vector.new(0,0)
+        @joint3.velocity = Pongo::Vector.new(0,0)
     end
     def getGlobalRadiusAtArms()
         """
