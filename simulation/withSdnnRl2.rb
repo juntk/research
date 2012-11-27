@@ -1,5 +1,6 @@
 #encoding:utf-8
 require 'tk'
+require 'rubygems'
 require 'pongo'
 require 'pongo/renderer/tk_renderer'
 require 'pongo/logger/standard_logger'
@@ -13,15 +14,17 @@ class Test
 
 	def initialize
         @sdnn = Sdnn.new
+        @rate = 10
+        @isNoMax = false
         @bql = BasicQLearning.new
         @bql.alpha = 0.5
         @bql.gamma = 0.5
         @reward = 60 # housyuu
 		@width = 640
 		@height = 480
-		@gravity = 9.8
+		@gravity = 0
 		@lineWidth = 150
-        @addVelocity = 15
+        @addVelocity = 5
         @learning = true
 		root = TkRoot.new { title 'Acrobot' }
 		@canvas = TkCanvas.new(root, :width=>@width, :height=>@height)
@@ -239,19 +242,20 @@ class Test
                 rn1 = getTan(lineVector1, quadrant1)
                 rn2 = getTan(lineVector2, quadrant1)
                 
-                # sdnn
-                rate = 30
-                r1 = rn1 / rate
-                r2 = rn2 / rate
+                r1 = rn1 / @rate
+                r2 = rn2 / @rate
 
-                puts r1.to_i % rate
-                """
-                if @qvalue == true and @b.curr.x <= 320 and @c.curr.x <= 320 and r1.to_i % rate == 0 then
-                """
-                if @qvalue == true and (rn1.to_i % rate == 0 or rn2.to_i % rate == 0) then
+                puts r1.to_i % @rate
 
-                    @inputLayer = [@lineLength.to_i/rate, @line2Length.to_i/rate,r1.to_i,  r2.to_i]
+                maxCount = 0
+                """
+                if @qvalue == true and @b.curr.x <= 320 and @c.curr.x <= 320 and r2.to_i % @rate == 0 then
+                """
+                if @qvalue == true and ( rn2.to_i % @rate == 0) then
+
+                    @inputLayer = [@lineLength.to_i/@rate, @line2Length.to_i/@rate,r1.to_i,  r2.to_i]
                     if @c.curr.y <= 60 or @b.curr.y <= 60 and @tmpILA != @inputLayer and @learning == true then
+                        puts "報酬"
                         qValue = @sdnn.learning(@inputLayer,@reward)
                         drawQValue(qValue, @c.curr, @b.curr, @a.curr)
                         @tmpILA = @inputLayer
@@ -261,7 +265,6 @@ class Test
                         @c.user_data[:shape].fill = '#FF0000'
                         @line.p1.user_data[:shape].fill = '#FF0000'
                         @line2.p1.user_data[:shape].fill = '#FF0000'
-                        @a.pack
                     else
                         p @line.p1
                         @a.user_data[:shape].fill = '#000000'
@@ -270,15 +273,15 @@ class Test
                         @line.p1.user_data[:shape].fill = '#000000'
                         @line2.p1.user_data[:shape].fill = '#000000'
                         #test
-                        rate2 = 1
+                        @rate2 = 1
                         pattern = []
-                        pattern << [r1+rate2, r2, -1*@addVelocity, 0]
-                        pattern << [r1+rate2, r2+rate2, -1*@addVelocity,-1*@addVelocity]
-                        pattern << [r1, r2+rate2, 0, -1*@addVelocity]
-                        pattern << [r1-rate2, r2, @addVelocity, 0]
-                        pattern << [r1-rate2, r2-rate2,@addVelocity,@addVelocity]
-                        pattern << [r1, r2-rate2, 0, @addVelocity]
-                        max = 0
+                        pattern << [r1+@rate2, r2, -1*@addVelocity, 0]
+                        pattern << [r1+@rate2, r2+@rate2, -1*@addVelocity,-1*@addVelocity]
+                        pattern << [r1, r2+@rate2, 0, -1*@addVelocity]
+                        pattern << [r1-@rate2, r2, @addVelocity, 0]
+                        pattern << [r1-@rate2, r2-@rate2,@addVelocity,@addVelocity]
+                        pattern << [r1, r2-@rate2, 0, @addVelocity]
+                        max = -10000
                         maxi = nil
                         print 'check sentaku'
                         pattern.shuffle.each_with_index do |v,i|
@@ -288,22 +291,32 @@ class Test
                             if v[1] < 0 then
                                 v[1] = 0
                             end
-                            tmpInputLayer = [@lineLength.to_i/rate, @line2Length.to_i/rate,v[0].to_i,  v[1].to_i]
+                            tmpInputLayer = [@lineLength.to_i/@rate, @line2Length.to_i/@rate,v[0].to_i,  v[1].to_i]
                             p tmpInputLayer
 
                             reward = @sdnn.checkTest(tmpInputLayer)
                             print '!', reward
                             puts
+                            if reward == max then
+                                maxCount += 1
+                            end
                             if reward > max then
                                 max = reward
                                 maxi = i
                             end
+                        end
                             if maxi != nil and @tmpIL != @inputLayer then
                                 if @learning == true then
                                     oldQValue = @sdnn.checkTest(@inputLayer)
                                     print 'old',oldQValue
                                     puts
-                                    newQValue = @bql.getNewQValue(oldQValue, 0, max).to_i
+                                    if maxCount == pattern.length-1  then
+                                        @isNoMax = true
+                                        puts 'maxなし'
+                                        newQValue = @bql.getNewQValue(oldQValue, -60, max).to_i
+                                    else
+                                        newQValue = @bql.getNewQValue(oldQValue, 0, max).to_i
+                                    end
                                     print 'new', newQValue
                                     puts
                                     qValue = @sdnn.learning(@inputLayer,newQValue)
@@ -311,12 +324,45 @@ class Test
                                 end
 
                                 nextP = pattern[maxi]
-                                @c.velocity = (Pongo::Vector.new(nextP[2], nextP[2]))
-                                @b.velocity = (Pongo::Vector.new(nextP[3], nextP[3]))
+                                vX = @addVelocity
+                                vY = vX
+                                if @isNoMax == true then
+                                    if rand(2) == 0 then
+                                        vX *= -1
+                                    else
+                                        vX *= 1
+                                    end
+                                    if rand(2) == 0 then
+                                        vY *= -1
+                                    else
+                                        vY *= 1
+                                    end
+                                end
+                                if @isNoMax == false and nextP[1] > r2 then
+                                    if quadrant2 == 4 then
+                                        vX *= -1
+                                        vY *= 1
+                                    elsif quadrant2 == 3 then
+                                        vX *= -1
+                                        vY *= -1
+                                    elsif quadrant2 == 2 then
+                                        vY *= -1
+                                    end
+                                else
+                                    if quadrant2 == 4 then
+                                        vY *= -1
+                                    elsif quadrant2 == 2 then
+                                        vX *= -1
+                                    elsif quadrant2 == 1 then
+                                        vX *= -1
+                                        vY *= -1
+                                    end
+                                end
+                                @c.velocity = (Pongo::Vector.new(vX,vY))
+                                #@b.velocity = (Pongo::Vector.new(nextP[3], nextP[3]))
                                 @tmpIL = @inputLayer
                                 #addForce()
                             end
-                        end
                     end
                 else
                     if @b.curr.y > 60 and @c.curr.y > 60 then
@@ -379,6 +425,7 @@ class Test
 		Tk.mainloop
 	end
     def drawQValue(aValue, aP, aP2, aP3)
+        if aValue < 0 then return end
         blue = aValue
         if aValue != 0
             at = 255 / aValue

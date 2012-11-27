@@ -1,7 +1,9 @@
-symbolLength = 50
+symbolLength = 200
 
 def makeSymbol(aLength, aBefore=[])
     tmp = []
+    plusCount = 0
+    minusCount = 0
     if aBefore.length == 0 then
         flug = aLength / 2
         aLength.times do |t|
@@ -12,11 +14,21 @@ def makeSymbol(aLength, aBefore=[])
                 tmp << '-1'
             end
             """
-            t = rand(2)
+            if (minusCount >= flug) then
+                t = 1
+            elsif (plusCount >= flug) then
+                t = 0
+            else
+                t = rand(2)
+            end
             if t == 0 then
                 t = -1
+                minusCount += 1
+            elsif t == 1 then
+                plusCount += 1
             end
             tmp << t
+            p [ minusCount, plusCount]
 
         end
     else

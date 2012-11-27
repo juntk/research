@@ -7,7 +7,7 @@ class Network
         @currentPath = './sdnn'
         @symbolPath = @currentPath + '/Symbol.txt'
         @outputElementNum = aOutputElementNum
-        @thresholdGradient = 2.5*@outputElementNum
+        @thresholdGradient = 2*@outputElementNum
     end
     def encodeNumToSymbol(aNum)
         """ 数字をシンボル（±1）の羅列に変換 """
@@ -142,9 +142,12 @@ class Network
         result = 0
         aOutputLayer.each do |v|
             #print v.output
+            """
             if v.output == 1 then
                 result += v.output
             end
+            """
+            result += v.output
         end
         #puts
         return result
