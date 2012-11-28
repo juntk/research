@@ -4,6 +4,11 @@ class Sdnn
     attr_accessor :weightMiddle2End
     def initialize()
         """
+        MySymbol
+        """
+        @mySymbol = MySymbol.new
+
+        """
         SDNN
         """
         # 扱う変数(引数)の数
@@ -21,7 +26,7 @@ class Sdnn
         # 重み
         @weightMiddle2End = []
         """ 重みにこう配をつける """
-        @weightBegin = 0.00001
+        @weightBegin = 0
         @weightAdd = 0
 
 
@@ -29,7 +34,7 @@ class Sdnn
         @thresholdEnd = []
         """しきい値にこう配をつける"""
         # しきい値の開始値
-        @thresholdBegin = -50
+        @thresholdBegin = -1 * (@mySymbol.symbolLength / 2)
         # しきい値の増加値
         @thresholdAdd = 1
 
@@ -37,10 +42,6 @@ class Sdnn
         # 巡回置換に使う置換行列
         @permutatioin = []
         
-        """
-        MySymbol
-        """
-        @mySymbol = MySymbol.new
 
         """
         環境設定
@@ -73,7 +74,7 @@ class Sdnn
         threshold = @thresholdBegin
         @numberOfElementAtEnd.times do |t|
             @thresholdEnd << threshold
-            threshold = rand(10) * @thresholdAdd
+            threshold += @thresholdAdd
         end
         # 出力層の素子への入力×重みの合計値
         @inputEndAmounts = Array.new(@outputEnd.length)
@@ -173,7 +174,6 @@ class Sdnn
         end
         # 出力層の素子群の合計
         print "Input: "
-        p input
         puts "Output: " + outputValue.to_s
         return outputValue
     end
@@ -217,7 +217,6 @@ class Sdnn
         罰を与える
         ここ検証、動作おかしかったら削除
         """
-        p teacher
         if teacher < 0 then
             puts "BAD"
             badCount = 0
@@ -230,7 +229,6 @@ class Sdnn
                         end
                     end
                     fixRate = -1.0*teacher / fixCount
-                    p fixRate
                     @outputMiddle.each_with_index do |value, index|
                         if value == -1 then
                             @weightMiddle2End[endIndex][index] += fixRate
@@ -279,7 +277,7 @@ class Sdnn
             end
             # 修正しやすい素子の入力合計値としきい値の誤差
             fireDegree = fireDegrees[minIndex]
-            fireDegrees[minIndex] = nil
+            fireDegrees[minIndex] = 0
 
             fireDegreeVector = fireDegreeVectors[minIndex]
             # 不感化された素子に繋がる重みは修正しない

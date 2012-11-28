@@ -49,7 +49,7 @@ class Acrobot < Pongo::Group
         """
         アーム
         """
-        @armPositionByTop = 120
+        @armPositionByTop = @windowHeight/2
         @joint1 = CircleParticle.new(
             @windowWidth/2,
             @armPositionByTop,
@@ -119,9 +119,9 @@ class Acrobot < Pongo::Group
         """
         @base = RectangleParticle.new(
             0,
-            @windowHeight-60,
+            @windowHeight-10,
             @windowWidth*2,
-            30,
+            10,
             :fixed=>true
         )
     end

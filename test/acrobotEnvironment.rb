@@ -6,7 +6,7 @@ class AcrobotEnvironment
         Acrobot Environment
         """
         # 重力
-        @gravity = 0.0
+        @gravity = 1
         # 減衰
         @damping = 1.0
     end

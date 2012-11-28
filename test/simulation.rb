@@ -27,11 +27,13 @@ class Simulation
         """
         SDNN
         """
-        @sdnn = Sdnn.new
+        @sdnn = nil
+        @sdnnLeft = Sdnn.new
+        @sdnnRight = Sdnn.new
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
         @sdnnReward = 60
-        @sdnnInterval = 30
+        @sdnnInterval = 10
 
         """
         Pongo
@@ -56,11 +58,16 @@ class Simulation
         シミュレーション
         """
         @timeLimit = 50
-        @timeStart = nil
+        @stopwatch = nil
         @prevInput = nil
-        @speedJoint3 = 1.5
+        @currGlobalRads = []
+        @prevGlobalRads = []
+        @speedJoint3 = 3
+        @episode = 0
+        @episodeTime = []
     end
     def initializeButton
+        """
         # start
         buttonStartLQ = TkButton.new(:text=> 'start(+Learn+Qvalue)')
         buttonStartLQ.command {
@@ -90,6 +97,7 @@ class Simulation
             @pongoIsAlive = true
         }
         buttonStart.pack(:side=>'right')
+        """
 
         # stop
         buttonStop = TkButton.new(:text=> 'stop')
@@ -104,9 +112,17 @@ class Simulation
             @acrobot.joint3.velocity = Pongo::Vector.new(1,1)
         }
         buttonPower.pack(:side=>'right')
+
+
+        @labelEpisode = TkLabel.new(:text=> @episode.to_s)
+        @labelEpisode.pack(:side=>'right')
+        @labelStopwatch = TkLabel.new(:text=> @stopwatch.to_s)
+        @labelStopwatch.pack(:side=>'right')
+
     end
 
     def resetArms()
+        puts "resetArms"
         @acrobot.joint2.curr = Pongo::Vector.new(
             @windowWidth/2,
             @acrobot.armPositionByTop + @acrobot.arm1.length
@@ -119,6 +135,22 @@ class Simulation
         @acrobot.joint2.velocity = Pongo::Vector.new(0,0)
         @acrobot.joint3.velocity = Pongo::Vector.new(0,0)
     end
+    def reset()
+        puts "reset"
+        resetArms()
+        @episode += 1
+        @labelEpisode.text = 'Episode: ' + @episode.to_s
+        @labelEpisode.pack()
+        @stopwatch = 0
+    end
+    def log()
+        # Learning Curves
+        strLC = "Date:" + Time.now.to_s + "\n"
+        @episodeTime.each_with_index do |time, index|
+        end
+        #f = open('logLearningCurves.txt','a')
+        #f.
+    end
     def run()
         TkTimer.start(10) do |timer|
             begin
@@ -128,24 +160,41 @@ class Simulation
                 APEngine.log("#{$!.message}\n#{$!.backtrace.join("\n")}")
             end
             begin
-                if @timeStart == nil then
-                    @timeStart = Time.now.to_i
-                elsif Time.now.to_i - @timeStart >= @timeLimit then
-                    @timeStart = Time.now.to_i
-                    resetArms()
+                # 実行時間
+                if @stopwatch == nil then
+                    reset()
+                elsif @stopwatch >= @timeLimit then
+                    reset()
                 end
+                @labelStopwatch.text = 'time: ' + @stopwatch.to_s
+                @labelStopwatch.pack()
+
                 # アクロボットのパラメータ表示
-                globalRads = @acrobot.getGlobalRadiusAtArms()
+                @currGlobalRads = @acrobot.getGlobalRadiusAtArms()
+                @currRads = @acrobot.getRadiusAtArms()
                 speeds = @acrobot.getSpeedAtArms()
                 vectorSpeeds = @acrobot.getVectorSpeedAtArms()
                 angularVelocitys = @acrobot.getAngularVelocityAtArms().map {|v|v=normalizationAngularVelocity(v)}
+
+                # 左画面右画面判定
+                if @acrobot.joint2.curr.x < @windowWidth / 2 then
+                    @sdnn = @sdnnLeft
+                elsif @acrobot.joint2.curr.x > @windowWidth / 2 then
+                    @sdnn = @sdnnRight
+                else
+                    if rand(2) == 1 then
+                        @sdnn = @sdnnLeft
+                    else
+                        @sdnn = @sdnnRight
+                    end
+                end
 
                 """
                 SDNN
                 """
                 # @sdnnIntervalごとにチェック
-                if globalRads[0] % @sdnnInterval == 0 or globalRads[1] % @sdnnInterval == 0 then 
-                    rads = globalRads.map {|v|v=normalizationGlobalRadians(v)}
+                if @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
+                    rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
                     dump(rads, speeds, vectorSpeeds, angularVelocitys)
 
                     input = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
@@ -156,16 +205,21 @@ class Simulation
                         # 次の行動を選択
                         nextRad, maxQValue = selectAction(input)
                         # トルクを与える
-                        addForce(rads[1], nextRad)
+                        addForce(@currGlobalRads[1], nextRad)
+                        learningSdnn(input, qValue, 0, maxQValue)
                         if isGoal() then
-                            learningSdnn(input, qValue, @sdnnReward, maxQValue)
-                        elsif rads[0] > 17 and rads[0] < 19 then
-                            learningSdnn(input, qValue, -100, maxQValue)
-                        else
-                            learningSdnn(input, qValue, 0, maxQValue)
+                            learningSdnn(input, qValue, @sdnnReward)
+                            puts "GOAL"
+                            p input, qValue, @sdnnReward
+                            reset()
+                            puts "!!"
+                        elsif isBad() then
+                            learningSdnn(input, qValue, -10)
                         end
                     end
                 end
+                @prevGlobalRads = @currGlobalRads
+                @stopwatch += 0.01
             rescue
                 puts($!)
             end
@@ -187,21 +241,57 @@ class Simulation
     end
     def selectAction(nowInput)
         inputA = []
-        inputA += nowInput
-        inputA[1] += @sdnnInterval
-        qValueA = readSdnn(inputA, true)
         inputB = []
+        inputA += nowInput
         inputB += nowInput
-        if inputB[1] >= 10 then
-            inputB[1] -= @sdnnInterval
-        end
-        qValueB = readSdnn(inputB, true)
-        if qValueA < qValueB then
-            return inputA[1], qValueB
-        elsif qValueA > qValueB then
-            return inputB[1], qValueA
+        resultA = @currGlobalRads[1]
+        resultB = @currGlobalRads[1]
+        if nowInput[0] == 0 and nowInput[0] then
+            inputA[1] += 1
+            inputB[1] += 1
+            resultA += @sdnnInterval
+            resultB += @sdnnInterval
+            @sdnn = @sdnnRight
+            qValueA = readSdnn(inputA, true)
+            @sdnn = @sdnnLeft
+            qValueB = readSdnn(inputB, true)
         else
-            return inputA[1], qValueA
+            inputA[1] += 1
+            resultA += @sdnnInterval
+            qValueA = readSdnn(inputA, true)
+            if inputB[1] >= 1 then
+                inputB[1] -= 1
+                resultB -= @sdnnInterval
+            end
+            qValueB = readSdnn(inputB, true)
+        end
+        if qValueA < qValueB then
+            @sdnn = @sdnnLeft
+            return resultB, qValueB
+        elsif qValueA > qValueB then
+            @sdnn = @sdnnRight
+            return resultA, qValueA
+        else
+            if rand(2) == 1 then
+                @sdnn = @sdnnRight
+                return resultA, qValueA
+            else
+                @sdnn = @sdnnLeft
+                return resultB, qValueB
+            end
+        end
+    end
+    def isBad()
+        moveValue = 0 
+        if @currGlobalRads[0] <= @prevGlobalRads[0] then
+            moveValue = @prevGlobalRads[0] - @currGlobalRads[0]
+        elsif @currGlobalRads[0] >= @prevGlobalRads[0] then
+            moveValue = @currGlobalRads[0] - @prevGlobalRads[0]
+        end
+        if moveValue < 1 then
+            return true
+        else
+            return false
         end
     end
     def isGoal()
@@ -213,8 +303,7 @@ class Simulation
         end
     end
     def addForce(oldRad, newRad)
-        oldRad = denormalizationGlobalRadians(oldRad)
-        newRad = denormalizationGlobalRadians(newRad)
+        p oldRad, newRad
         vectorStr = ''
         vectorX = 0
         vectorY = 0
@@ -236,11 +325,15 @@ class Simulation
             tmpX = -1
         elsif x > 0 then
             tmpX = 1
+        else
+            tmpX = 0
         end
         if y < 0 then
             tmpY = -1
         elsif y > 0 then
             tmpY = 1
+        else
+            tmpY = 0
         end
         if vectorStr == "L" then
             vectorX = tmpX * -1
@@ -249,7 +342,10 @@ class Simulation
             vectorX = tmpX
             vectorY = tmpY
         end
-        @acrobot.joint3.velocity = Pongo::Vector.new(vectorX * @speedJoint3, vectorY * @speedJoint3)
+        v = @acrobot.joint3.velocity
+        v = Pongo::Vector.new(0,0)
+        @acrobot.joint3.velocity = Pongo::Vector.new(v.x + vectorX * @speedJoint3,
+                                                     v.y + vectorY * @speedJoint3)
         return 
     end
     def normalizationAngularVelocity(angularVelocity)
@@ -258,7 +354,7 @@ class Simulation
         """
         # バイアス
         bias = 50 / 2
-        angularVelocity *= 1000
+        angularVelocity *= 50
         angularVelocity += bias
         return angularVelocity.to_i
     end
