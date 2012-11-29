@@ -4,11 +4,11 @@ require "point.rb"
 class BasicQLearning
     attr_accessor :alpha, :gamma
     def initialize
-        @alpha = 0.9
-        @gamma = 0.5
+        @alpha = 0.5
+        @gamma = 0.9
     end
     def getNewQValue(aOldQValue, aReward, aNextQMax)
-        newQValue = (1-@alpha)*aOldQValue + @alpha * (aReward + @gamma * aNextQMax - aOldQValue)
+        newQValue = (1-@alpha)*aOldQValue + @alpha * (aReward + @gamma * aNextQMax)
 	p ['newQValue',newQValue]
         return newQValue.to_i
     end

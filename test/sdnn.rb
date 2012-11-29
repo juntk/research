@@ -34,7 +34,7 @@ class Sdnn
         @thresholdEnd = []
         """しきい値にこう配をつける"""
         # しきい値の開始値
-        @thresholdBegin = -1 * (@mySymbol.symbolLength / 2)
+        @thresholdBegin = -1 * (@numberOfElementAtEnd / 2)
         # しきい値の増加値
         @thresholdAdd = 1
 
@@ -173,7 +173,6 @@ class Sdnn
             outputValue += @outputEnd[endIndex]
         end
         # 出力層の素子群の合計
-        print "Input: "
         puts "Output: " + outputValue.to_s
         return outputValue
     end
@@ -260,17 +259,18 @@ class Sdnn
                 fireDegreeVectors[index] = tmpDegreeVector
             end
         end
+        #p fireDegrees
+        #p fireDegreeVectors
         """
         重みの修正
         """
-        #p ['fixCount', fixCount]
         fixCount.times do |t|
             # 修正しやすい素子を選択
             # 修正コスト
             min = nil
             minIndex = nil
             fireDegrees.each_with_index do |value, index|
-                if value != nil and (min == nil or value < min) then
+                if value != nil and value != 0 and (min == nil or value < min) then
                     min = value
                     minIndex = index
                 end
@@ -288,7 +288,7 @@ class Sdnn
             # ある素子に繋がる重みの修正レート＝
             # 　＝誤差／修正できる重みの数
             # 誤差＝修正レート×修正できる重みの数
-            fixRate = (fireDegree+0.1) / fixWeightCount
+            fixRate = (fireDegree+0.5) / fixWeightCount
             @weightMiddle2End[minIndex].each_with_index do |weight, index|
                 if @outputMiddle[index] == 1 then
                     if fireDegreeVector == 1 then
@@ -348,10 +348,8 @@ class Sdnn
             end
             # puts 'e'
         end
-        #p [a,b,result,vector]
+        #p [result, vector]
         return result, vector
     end
 end
 
-s = Sdnn.new()
-s.read([17,18,20,36])

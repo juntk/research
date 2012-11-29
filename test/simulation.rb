@@ -33,7 +33,7 @@ class Simulation
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
         @sdnnReward = 60
-        @sdnnInterval = 10
+        @sdnnInterval = 20
 
         """
         Pongo
@@ -62,7 +62,7 @@ class Simulation
         @prevInput = nil
         @currGlobalRads = []
         @prevGlobalRads = []
-        @speedJoint3 = 3
+        @speedJoint3 = 9.8
         @episode = 0
         @episodeTime = []
     end
@@ -118,6 +118,11 @@ class Simulation
         @labelEpisode.pack(:side=>'right')
         @labelStopwatch = TkLabel.new(:text=> @stopwatch.to_s)
         @labelStopwatch.pack(:side=>'right')
+        @labelNewQValue = TkLabel.new(:text=> '')
+        @labelNewQValue.pack(:side=>'right')
+        @labelQValue = TkLabel.new(:text=> '')
+        @labelQValue.pack(:side=>'right')
+
 
     end
 
@@ -137,19 +142,24 @@ class Simulation
     end
     def reset()
         puts "reset"
+        log()
         resetArms()
         @episode += 1
         @labelEpisode.text = 'Episode: ' + @episode.to_s
         @labelEpisode.pack()
-        @stopwatch = 0
+        @stopwatch = 1
     end
     def log()
         # Learning Curves
-        strLC = "Date:" + Time.now.to_s + "\n"
-        @episodeTime.each_with_index do |time, index|
+        strLC = ""
+        if @stopwatch == nil then
+            strLC += "Date: " + Time.now.to_s + "\n"
+        else
+            strLC += "Ep" + @episode.to_s + ":" + @stopwatch.to_s + "\n"
         end
-        #f = open('logLearningCurves.txt','a')
-        #f.
+        f = open('logLearningCurves.txt','a')
+        f.write(strLC)
+        f.close()
     end
     def run()
         TkTimer.start(10) do |timer|
@@ -163,7 +173,7 @@ class Simulation
                 # 実行時間
                 if @stopwatch == nil then
                     reset()
-                elsif @stopwatch >= @timeLimit then
+                elsif @stopwatch >= @timeLimit*100 then
                     reset()
                 end
                 @labelStopwatch.text = 'time: ' + @stopwatch.to_s
@@ -192,13 +202,22 @@ class Simulation
                 """
                 SDNN
                 """
+                # ゴールのチェックは常に行う
+                if isGoal() then
+                    reward = @sdnnReward
+                    learningSdnn(input, qValue, reward, maxQValue)
+                    reset()
+                end
                 # @sdnnIntervalごとにチェック
                 if @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
+                #if @stopwatch % 10 == 0 then
+                    #rads = @currGlobalRads.map {|v|v=normalizationGlobalRadians(v)}
                     rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
                     dump(rads, speeds, vectorSpeeds, angularVelocitys)
 
                     input = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
                     if @prevInput == nil or @prevInput != input then
+                    #if true then
                         @prevInput = input
                         # 現在の行動価値を取得
                         qValue = readSdnn(input, true)
@@ -206,20 +225,23 @@ class Simulation
                         nextRad, maxQValue = selectAction(input)
                         # トルクを与える
                         addForce(@currGlobalRads[1], nextRad)
-                        learningSdnn(input, qValue, 0, maxQValue)
+                        reward = 0
                         if isGoal() then
-                            learningSdnn(input, qValue, @sdnnReward)
-                            puts "GOAL"
-                            p input, qValue, @sdnnReward
-                            reset()
-                            puts "!!"
+                            reward = @sdnnReward
                         elsif isBad() then
-                            learningSdnn(input, qValue, -10)
+                            reward = -20
+                        end
+                        learningSdnn(input, qValue, reward, maxQValue)
+                        if isGoal() then
+                            reset()
                         end
                     end
+                    @prevGlobalRads = @currGlobalRads
                 end
-                @prevGlobalRads = @currGlobalRads
-                @stopwatch += 0.01
+                if @prevGlobalRads == [] then
+                    @prevGlobalRads = @currGlobalRads
+                end
+                @stopwatch += 1
             rescue
                 puts($!)
             end
@@ -232,12 +254,12 @@ class Simulation
         return qValue
     end
     def learningSdnn(input, oldQValue, reward, maxQValue=nil)
-        if maxQValue == nil then
-            teacher = @qLearning.getNewQValue4Reward(oldQValue, reward)
-        else
-            teacher = @qLearning.getNewQValue(oldQValue, reward, maxQValue)
-        end
+        teacher = @qLearning.getNewQValue(oldQValue, reward, maxQValue).to_i
+        puts teacher
         @sdnn.learning(input, teacher)
+        newQValue = readSdnn(input, true)
+        @labelQValue.text = "Q: " + oldQValue.to_s
+        @labelNewQValue.text = "newQ: " + newQValue.to_s
     end
     def selectAction(nowInput)
         inputA = []
@@ -295,7 +317,7 @@ class Simulation
         end
     end
     def isGoal()
-        goal = @acrobot.joint1.curr.y
+        goal = @acrobot.joint1.curr.y - @acrobot.arm1.length
         if @acrobot.joint3.curr.y < goal then
             return true
         else
@@ -345,7 +367,7 @@ class Simulation
         v = @acrobot.joint3.velocity
         v = Pongo::Vector.new(0,0)
         @acrobot.joint3.velocity = Pongo::Vector.new(v.x + vectorX * @speedJoint3,
-                                                     v.y + vectorY * @speedJoint3)
+                                                     v.y + vectorY * @speedJoint3 * 1.2)
         return 
     end
     def normalizationAngularVelocity(angularVelocity)
@@ -353,6 +375,7 @@ class Simulation
         正規化
         """
         # バイアス
+        # コード化数
         bias = 50 / 2
         angularVelocity *= 50
         angularVelocity += bias
