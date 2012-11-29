@@ -202,15 +202,9 @@ class Simulation
                 """
                 SDNN
                 """
-                # ゴールのチェックは常に行う
-                if isGoal() then
-                    reward = @sdnnReward
-                    learningSdnn(input, qValue, reward, maxQValue)
-                    reset()
-                end
                 # @sdnnIntervalごとにチェック
-                if @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
-                #if @stopwatch % 10 == 0 then
+                #if isGoal() or @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
+                if isGoal() or @stopwatch % 10 == 0 then
                     #rads = @currGlobalRads.map {|v|v=normalizationGlobalRadians(v)}
                     rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
                     dump(rads, speeds, vectorSpeeds, angularVelocitys)
