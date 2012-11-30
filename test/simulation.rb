@@ -32,7 +32,7 @@ class Simulation
         @sdnnRight = Sdnn.new
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
-        @sdnnReward = 60
+        @sdnnReward = 25
         @sdnnInterval = 20
 
         """
@@ -57,11 +57,12 @@ class Simulation
         """
         シミュレーション
         """
+        @tkTimerInterval = 10
         @timeLimit = 50
-        @stopwatch = nil
+        @currStopwatch = nil
         @prevInput = nil
         @currGlobalRads = []
-        @prevGlobalRads = []
+        @prevGlobalRads = [180,180]
         @speedJoint3 = 9.8
         @episode = 0
         @episodeTime = []
@@ -116,7 +117,7 @@ class Simulation
 
         @labelEpisode = TkLabel.new(:text=> @episode.to_s)
         @labelEpisode.pack(:side=>'right')
-        @labelStopwatch = TkLabel.new(:text=> @stopwatch.to_s)
+        @labelStopwatch = TkLabel.new(:text=> @currStopwatch.to_s)
         @labelStopwatch.pack(:side=>'right')
         @labelNewQValue = TkLabel.new(:text=> '')
         @labelNewQValue.pack(:side=>'right')
@@ -147,22 +148,54 @@ class Simulation
         @episode += 1
         @labelEpisode.text = 'Episode: ' + @episode.to_s
         @labelEpisode.pack()
-        @stopwatch = 1
+        @currStopwatch = 1
     end
     def log()
         # Learning Curves
         strLC = ""
-        if @stopwatch == nil then
+        if @currStopwatch == nil then
             strLC += "Date: " + Time.now.to_s + "\n"
         else
-            strLC += "Ep" + @episode.to_s + ":" + @stopwatch.to_s + "\n"
+            strLC += @episode.to_s + "," + @currStopwatch.to_s + "\n"
         end
         f = open('logLearningCurves.txt','a')
         f.write(strLC)
         f.close()
     end
+    def logQValue()
+        puts "logQValue()"
+        numRad1 = 180 / @sdnnInterval
+        numRad2 = 180 / @sdnnInterval
+        angularVelocity = [9, 18, 27] # => [-180, 0, 180]
+        input = []
+        str = "Date: " + Time.now.to_s + "\n"
+        f = open('logQValue.txt', 'a')
+        f.write(str)
+        angularVelocity.each do |v|
+            angularVelocity.each do |v2|
+                numRad1.times do |r1|
+                    numRad2.times do |r2|
+                        input = [r1, r2, v, v2]
+                        qValue = readSdnn(input, true)
+                        str = '['
+                        input.each_with_index do |x, i|
+                            str += x.to_s
+                            if i == input.length - 1 then
+                                str += ']'
+                            else
+                                str += ','
+                            end
+                        end
+                        str += ':' + qValue.to_s + "\n"
+                        f.write(str)
+                    end
+                end
+            end
+        end
+        f.close()
+    end
     def run()
-        TkTimer.start(10) do |timer|
+        TkTimer.start(@tkTimerInterval) do |timer|
             begin
                 APEngine.step
                 APEngine.draw
@@ -171,12 +204,12 @@ class Simulation
             end
             begin
                 # 実行時間
-                if @stopwatch == nil then
+                if @currStopwatch == nil then
                     reset()
-                elsif @stopwatch >= @timeLimit*100 then
+                elsif @currStopwatch >= @timeLimit*(1000/@tkTimerInterval) then
                     reset()
                 end
-                @labelStopwatch.text = 'time: ' + @stopwatch.to_s
+                @labelStopwatch.text = 'time: ' + @currStopwatch.to_s
                 @labelStopwatch.pack()
 
                 # アクロボットのパラメータ表示
@@ -184,7 +217,7 @@ class Simulation
                 @currRads = @acrobot.getRadiusAtArms()
                 speeds = @acrobot.getSpeedAtArms()
                 vectorSpeeds = @acrobot.getVectorSpeedAtArms()
-                angularVelocitys = @acrobot.getAngularVelocityAtArms().map {|v|v=normalizationAngularVelocity(v)}
+                angularVelocitys = getAngularVelocity().map {|v|v=normalizeAngularVelocity(v)}
 
                 # 左画面右画面判定
                 if @acrobot.joint2.curr.x < @windowWidth / 2 then
@@ -204,7 +237,8 @@ class Simulation
                 """
                 # @sdnnIntervalごとにチェック
                 #if isGoal() or @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
-                if isGoal() or @stopwatch % 10 == 0 then
+                #if isGoal()  or @currGlobalRads[1] % @sdnnInterval == 0 then 
+                if isGoal() or @currStopwatch % 10 == 0 then
                     #rads = @currGlobalRads.map {|v|v=normalizationGlobalRadians(v)}
                     rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
                     dump(rads, speeds, vectorSpeeds, angularVelocitys)
@@ -223,7 +257,7 @@ class Simulation
                         if isGoal() then
                             reward = @sdnnReward
                         elsif isBad() then
-                            reward = -20
+                            reward = -10
                         end
                         learningSdnn(input, qValue, reward, maxQValue)
                         if isGoal() then
@@ -235,7 +269,13 @@ class Simulation
                 if @prevGlobalRads == [] then
                     @prevGlobalRads = @currGlobalRads
                 end
-                @stopwatch += 1
+                @prevStopwatch = @currStopwatch
+                @currStopwatch += 1
+                
+                if @episode > 100 then
+                    logQValue()
+                    return
+                end
             rescue
                 puts($!)
             end
@@ -297,6 +337,38 @@ class Simulation
             end
         end
     end
+    def normalizeAngularVelocity(v)
+        tmp = 1000 / @tkTimerInterval
+        v /= tmp
+        # normalize
+        v += 360
+        # 0...50の範囲で表現できるように
+        v /= 20
+        return v.to_i
+    end
+    def denormalizeAngularVelocity(v)
+        tmp = 1000 / @tkTimerInterval
+        v *= 20
+        v -= 360
+        v *= tmp
+        return v
+    end
+    def getAngularVelocity()
+        tmp = 1000 / @tkTimerInterval
+        result = []
+        [0,1].each do |i|
+            moveValue = 0 
+            if @currGlobalRads[i] <= @prevGlobalRads[i] then
+                moveValue = @prevGlobalRads[i] - @currGlobalRads[i]
+                moveValue *= -1
+            elsif @currGlobalRads[i] >= @prevGlobalRads[i] then
+                moveValue = @currGlobalRads[i] - @prevGlobalRads[i]
+            end
+            moveValue *= tmp
+            result << moveValue
+        end
+        return result
+    end
     def isBad()
         moveValue = 0 
         if @currGlobalRads[0] <= @prevGlobalRads[0] then
@@ -304,7 +376,7 @@ class Simulation
         elsif @currGlobalRads[0] >= @prevGlobalRads[0] then
             moveValue = @currGlobalRads[0] - @prevGlobalRads[0]
         end
-        if moveValue < 1 then
+        if moveValue < 2 then
             return true
         else
             return false
@@ -364,17 +436,6 @@ class Simulation
                                                      v.y + vectorY * @speedJoint3 * 1.2)
         return 
     end
-    def normalizationAngularVelocity(angularVelocity)
-        """
-        正規化
-        """
-        # バイアス
-        # コード化数
-        bias = 50 / 2
-        angularVelocity *= 50
-        angularVelocity += bias
-        return angularVelocity.to_i
-    end
     def normalizationGlobalRadians(globalRadians)
         """
         正規化
@@ -422,3 +483,4 @@ end
 Readline.readline('',true)
 simulation = Simulation.new
 simulation.run()
+simulation.logQValue()

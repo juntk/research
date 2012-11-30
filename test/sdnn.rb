@@ -3,6 +3,7 @@ require 'mySymbol.rb'
 class Sdnn
     attr_accessor :weightMiddle2End
     def initialize()
+        @debug = false
         """
         MySymbol
         """
@@ -259,8 +260,10 @@ class Sdnn
                 fireDegreeVectors[index] = tmpDegreeVector
             end
         end
-        #p fireDegrees
-        #p fireDegreeVectors
+        if @debug then
+            p fireDegrees
+            p fireDegreeVectors
+        end
         """
         重みの修正
         """
@@ -312,44 +315,63 @@ class Sdnn
         """
         result = 0.0
         vector = 0
-        if a <= 0 and b >= 0 then
+        where = ''
+        if a < 0 and b > 0 then
             result = -1 * a + b 
             vector = -1
-            # puts 'a'
-        elsif a >= 0 and b <= 0 then
+            where = 'a'
+        elsif a > 0 and b < 0 then
             result = a + -1 * b
             vector = 1
-            # puts 'b'
-        elsif a <= 0 and b <= 0 then
-            if a >= b then
-                result = b - a
+            where = 'b'
+        elsif a < 0 and b < 0 then
+            if a > b then
+                result = -1 * (b - a)
                 vector = 1
             else
-                result = a - b
+                result = -1 * (a - b)
                 vector = -1
             end
-            # puts 'c'
-        elsif a >= 0 and b >= 0 then
-            if a >= b then
+            where = 'c'
+        elsif a > 0 and b > 0 then
+            if a > b then
                 result = a - b
                 vector = 1
             else
                 result = b - a
                 vector = -1
             end
-            # puts 'd'
+            where = 'd'
         else
-            if a >= b then
+            if a > b then
                 result = a - b
                 vector = 1
+            elsif a == b then
+                result = 0
+                vector = 0
             else
                 result = b - a
                 vector = -1
             end
-            # puts 'e'
+            where = 'e'
         end
-        #p [result, vector]
+        if @debug then
+            puts where
+            p [result, vector]
+        end
         return result, vector
     end
 end
 
+if @debug then
+    s = Sdnn.new
+    100.times do |t|
+        input = [rand(60),rand(60),rand(60),rand(60)]
+        p input
+        p s.read(input)
+        teacher = rand(40)
+        p ['teacher: ',teacher]
+        s.learning(input,teacher)
+        p s.read(input)
+    end
+end
