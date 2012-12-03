@@ -1,9 +1,9 @@
 require 'mySymbol.rb'
 
 class Sdnn
-    attr_accessor :weightMiddle2End
+    attr_accessor :weightMiddle2End, :debug
     def initialize()
-        @debug = false
+        @debug = true
         """
         MySymbol
         """
@@ -14,6 +14,8 @@ class Sdnn
         """
         # 扱う変数(引数)の数
         @numberOfArgument = 4
+        # 学習係数
+        @learningRate = 0.05
 
         # 素子の出力値
         @outputFirst = []
@@ -22,7 +24,7 @@ class Sdnn
         # 素子数
         @numberOfElementAtMiddle = nil
         # 素子数 出力値として表現できる自然数の範囲
-        @numberOfElementAtEnd = 60
+        @numberOfElementAtEnd = 100
 
         # 重み
         @weightMiddle2End = []
@@ -255,10 +257,13 @@ class Sdnn
         @thresholdEnd.each_with_index do |threshold, index|
             amount = @inputEndAmounts[index]
             tmpDegree,tmpDegreeVector = getErrorValue(threshold,amount)
+            """
+            # a
             if tmpDegreeVector == fixCountVector then
                 fireDegrees[index] = tmpDegree
                 fireDegreeVectors[index] = tmpDegreeVector
             end
+            """
         end
         if @debug then
             p fireDegrees
@@ -280,7 +285,10 @@ class Sdnn
             end
             # 修正しやすい素子の入力合計値としきい値の誤差
             fireDegree = fireDegrees[minIndex]
+            #a
+            """
             fireDegrees[minIndex] = 0
+            """
 
             fireDegreeVector = fireDegreeVectors[minIndex]
             # 不感化された素子に繋がる重みは修正しない
@@ -291,7 +299,11 @@ class Sdnn
             # ある素子に繋がる重みの修正レート＝
             # 　＝誤差／修正できる重みの数
             # 誤差＝修正レート×修正できる重みの数
-            fixRate = (fireDegree+0.5) / fixWeightCount
+
+            # a
+            fireDegree
+            # a end
+            fixRate = @learningRate * (fireDegree / fixWeightCount)
             @weightMiddle2End[minIndex].each_with_index do |weight, index|
                 if @outputMiddle[index] == 1 then
                     if fireDegreeVector == 1 then
@@ -363,8 +375,8 @@ class Sdnn
     end
 end
 
-if @debug then
-    s = Sdnn.new
+s = Sdnn.new
+if s.debug then
     100.times do |t|
         input = [rand(60),rand(60),rand(60),rand(60)]
         p input

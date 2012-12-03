@@ -6,7 +6,7 @@ class MySymbol
         # コード長
         @symbolLength = 50
         # 表現可能な自然数 0 ... N
-        @symbolCapacity = 100
+        @symbolCapacity = @symbolLength * 2
     end
     def decode(symbol)
         symbolRelation = Hash.new

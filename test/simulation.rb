@@ -32,7 +32,7 @@ class Simulation
         @sdnnRight = Sdnn.new
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
-        @sdnnReward = 25
+        @sdnnReward = 50
         @sdnnInterval = 20
 
         """
@@ -53,6 +53,7 @@ class Simulation
         Tk
         """
         initializeButton()
+        initializeLabel()
 
         """
         シミュレーション
@@ -113,18 +114,26 @@ class Simulation
             @acrobot.joint3.velocity = Pongo::Vector.new(1,1)
         }
         buttonPower.pack(:side=>'right')
-
-
+    end
+    def initializeLabel()
         @labelEpisode = TkLabel.new(:text=> @episode.to_s)
         @labelEpisode.pack(:side=>'right')
         @labelStopwatch = TkLabel.new(:text=> @currStopwatch.to_s)
         @labelStopwatch.pack(:side=>'right')
-        @labelNewQValue = TkLabel.new(:text=> '')
-        @labelNewQValue.pack(:side=>'right')
-        @labelQValue = TkLabel.new(:text=> '')
-        @labelQValue.pack(:side=>'right')
-
-
+        @labelCurrInput = TkLabel.new(:text=> '')
+        @labelCurrInput.pack(:side=>'left')
+        @labelCurrQValue = TkLabel.new(:text=> '')
+        @labelCurrQValue.pack(:side=>'left')
+        @labelCurrNewQValue = TkLabel.new(:text=> '')
+        @labelCurrNewQValue.pack(:side=>'left')
+        @labelCurrInputA = TkLabel.new(:text=> '')
+        @labelCurrInputA.pack(:side=>'left')
+        @labelCurrQValueA = TkLabel.new(:text=> '')
+        @labelCurrQValueA.pack(:side=>'left')
+        @labelCurrInputB = TkLabel.new(:text=> '')
+        @labelCurrInputB.pack(:side=>'left')
+        @labelCurrQValueB = TkLabel.new(:text=> '')
+        @labelCurrQValueB.pack(:side=>'left')
     end
 
     def resetArms()
@@ -166,7 +175,7 @@ class Simulation
         puts "logQValue()"
         numRad1 = 180 / @sdnnInterval
         numRad2 = 180 / @sdnnInterval
-        angularVelocity = [9, 18, 27] # => [-180, 0, 180]
+        angularVelocity = [0,20,30,40, 50, 60,70,80,90,99] # => [-180, 0, 180]
         input = []
         str = "Date: " + Time.now.to_s + "\n"
         f = open('logQValue.txt', 'a')
@@ -177,16 +186,12 @@ class Simulation
                     numRad2.times do |r2|
                         input = [r1, r2, v, v2]
                         qValue = readSdnn(input, true)
-                        str = '['
+                        str = ''
                         input.each_with_index do |x, i|
                             str += x.to_s
-                            if i == input.length - 1 then
-                                str += ']'
-                            else
-                                str += ','
-                            end
+                            str += ','
                         end
-                        str += ':' + qValue.to_s + "\n"
+                        str += qValue.to_s + "\n"
                         f.write(str)
                     end
                 end
@@ -235,32 +240,44 @@ class Simulation
                 """
                 SDNN
                 """
+                rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
+                input = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
+                # tk
+                @labelCurrInput.text = input.join(",") + ":"
+                """
+                if @nextRad == nil then
+                    @nextRad, maxQValue = selectAction(input)
+                end
+                """
                 # @sdnnIntervalごとにチェック
-                #if isGoal() or @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
                 #if isGoal()  or @currGlobalRads[1] % @sdnnInterval == 0 then 
                 if isGoal() or @currStopwatch % 10 == 0 then
+                #if isGoal() or (speeds[1] <= 1 or speeds[0] <= 1) then
+                #if isGoal() or @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
+                #if isGoal() or @currStopwatch == 0 or @nextRad[1] == rads[1] then
                     #rads = @currGlobalRads.map {|v|v=normalizationGlobalRadians(v)}
-                    rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
-                    dump(rads, speeds, vectorSpeeds, angularVelocitys)
 
-                    input = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
                     if @prevInput == nil or @prevInput != input then
                     #if true then
                         @prevInput = input
                         # 現在の行動価値を取得
                         qValue = readSdnn(input, true)
+                        @labelCurrQValue.text = qValue.to_s
                         # 次の行動を選択
-                        nextRad, maxQValue = selectAction(input)
+                        @nextRad, maxQValue = selectAction(input)
                         # トルクを与える
-                        addForce(@currGlobalRads[1], nextRad)
+                        addForce(@currGlobalRads[1], @nextRad)
                         reward = 0
                         if isGoal() then
                             reward = @sdnnReward
                         elsif isBad() then
-                            reward = -10
+                            reward = -5
                         end
-                        learningSdnn(input, qValue, reward, maxQValue)
-                        if isGoal() then
+                        newQValue = learningSdnn(input, qValue, reward, maxQValue)
+                        # tk
+                        @labelCurrNewQValue.text = newQValue.to_s
+                        #if isGoal() and @currStopwatch >= @timeLimit*(1000/@tkTimerInterval) then
+                        if isGoal()then
                             reset()
                         end
                     end
@@ -292,8 +309,7 @@ class Simulation
         puts teacher
         @sdnn.learning(input, teacher)
         newQValue = readSdnn(input, true)
-        @labelQValue.text = "Q: " + oldQValue.to_s
-        @labelNewQValue.text = "newQ: " + newQValue.to_s
+        return newQValue
     end
     def selectAction(nowInput)
         inputA = []
@@ -302,6 +318,7 @@ class Simulation
         inputB += nowInput
         resultA = @currGlobalRads[1]
         resultB = @currGlobalRads[1]
+        # 次の状態の行動価値を取得
         if nowInput[0] == 0 and nowInput[0] then
             inputA[1] += 1
             inputB[1] += 1
@@ -321,6 +338,12 @@ class Simulation
             end
             qValueB = readSdnn(inputB, true)
         end
+        # tk
+        @labelCurrInputA.text = inputA.join(",") + ":"
+        @labelCurrQValueA.text = qValueA.to_s
+        @labelCurrInputB.text = inputB.join(",") + ":"
+        @labelCurrQValueB.text = qValueB.to_s
+        # 行動価値が大きい方を選択
         if qValueA < qValueB then
             @sdnn = @sdnnLeft
             return resultB, qValueB
@@ -340,16 +363,17 @@ class Simulation
     def normalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
         v /= tmp
+        v /= 50
+        v += 50
+        p ['av',v]
         # normalize
-        v += 360
         # 0...50の範囲で表現できるように
-        v /= 20
         return v.to_i
     end
     def denormalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
-        v *= 20
-        v -= 360
+        v -= 50
+        v *= 50
         v *= tmp
         return v
     end
@@ -360,7 +384,7 @@ class Simulation
             moveValue = 0 
             if @currGlobalRads[i] <= @prevGlobalRads[i] then
                 moveValue = @prevGlobalRads[i] - @currGlobalRads[i]
-                moveValue *= -1
+                moveValue *= -5
             elsif @currGlobalRads[i] >= @prevGlobalRads[i] then
                 moveValue = @currGlobalRads[i] - @prevGlobalRads[i]
             end
@@ -376,7 +400,7 @@ class Simulation
         elsif @currGlobalRads[0] >= @prevGlobalRads[0] then
             moveValue = @currGlobalRads[0] - @prevGlobalRads[0]
         end
-        if moveValue < 2 then
+        if moveValue < 1 then
             return true
         else
             return false
@@ -391,7 +415,7 @@ class Simulation
         end
     end
     def addForce(oldRad, newRad)
-        p oldRad, newRad
+        p [oldRad, newRad]
         vectorStr = ''
         vectorX = 0
         vectorY = 0
@@ -407,40 +431,52 @@ class Simulation
                 vectorStr = "R"
             end
         end
-        x = Math.cos(oldRad)
-        y = Math.sin(oldRad)
-        if x < 0 then
-            tmpX = -1
-        elsif x > 0 then
-            tmpX = 1
-        else
-            tmpX = 0
+        if vectorStr == "R" then
+            if oldRad >= 0 and oldRad < 90 then
+                vectorX = 1
+                vectorY = 1
+            elsif oldRad >= 90 and oldRad < 180 then
+                vectorX = -1
+                vectorY = 1
+            elsif oldRad >= 180 and oldRad < 270 then
+                vectorX = -1
+                vectorY = -1
+            elsif oldRad >= 270 and oldRad < 360 then
+                vectorX = 1
+                vectorY = -1
+            end
+        elsif vectorStr == "L" then
+            if oldRad == 0 then
+                vectorX = -1
+                vectorY = 1
+            elsif oldRad > 0 and oldRad <= 90 then
+                vectorX = -1
+                vectorY = -1
+            elsif oldRad > 90 and oldRad <= 180 then
+                vectorX = 1
+                vectorY = -1
+            elsif oldRad > 180 and oldRad <= 270 then
+                vectorX = 1
+                vectorY = 1
+            elsif oldRad > 270 and oldRad <= 360 then
+                vectorX = -1
+                vectorY = 1
+            end
         end
-        if y < 0 then
-            tmpY = -1
-        elsif y > 0 then
-            tmpY = 1
-        else
-            tmpY = 0
-        end
-        if vectorStr == "L" then
-            vectorX = tmpX * -1
-            vectorY = tmpY
-        elsif vectorStr == "R" then
-            vectorX = tmpX
-            vectorY = tmpY
-        end
+        p ['vectorStr', vectorStr]
+        p ['vectorX', vectorX]
+        p ['vectorY', vectorY]
         v = @acrobot.joint3.velocity
         v = Pongo::Vector.new(0,0)
         @acrobot.joint3.velocity = Pongo::Vector.new(v.x + vectorX * @speedJoint3,
-                                                     v.y + vectorY * @speedJoint3 * 1.2)
+                                                     v.y + vectorY * @speedJoint3)
         return 
     end
     def normalizationGlobalRadians(globalRadians)
         """
         正規化
         """
-        globalRadians /= @sdnnInterval
+        globalRadians = globalRadians / @sdnnInterval
         return globalRadians.to_i
     end
     def denormalizationGlobalRadians(normalizedGlobalRadians)
@@ -460,7 +496,7 @@ class Simulation
         puts output
         puts
     end
-    def dump(rads, speeds, vectorSpeeds, angularVelocitys)
+    def dump(currInput, currInputQValue, currInputNewQValue, currInputA, currInputQValueA,currInputB,currInputQValueB)
         ENV['COLUMNS'].to_i.times do |t| print '-' end
         puts
         puts 'radius: 角度','speed: 速さ'
