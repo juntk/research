@@ -27,13 +27,12 @@ class Simulation
         """
         SDNN
         """
-        @sdnn = nil
         @sdnnLeft = Sdnn.new
         @sdnnRight = Sdnn.new
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
-        @sdnnReward = 50
-        @sdnnInterval = 10
+        @sdnnReward = 10
+        @sdnnInterval = 4
 
         """
         Pongo
@@ -52,55 +51,32 @@ class Simulation
         """
         Tk
         """
-        initializeButton()
-        initializeLabel()
+        if @enableTk then
+            initializeButton()
+            initializeLabel()
+        end
 
         """
         シミュレーション
         """
         @tkTimerInterval = 10
+        @enableTk = false
         @timeLimit = 50
         @currStopwatch = nil
+        @currInput = nil
         @prevInput = nil
+        @prevQValue = nil
+        @currQValue = nil
+        @prevSdnn = nil
+        @currSdnn = nil
         @currGlobalRads = []
         @prevGlobalRads = [180,180]
-        @speedJoint3 = 9.8
+        @force =9.8
         @episode = 0
         @episodeTime = []
+        @randomSelectAction = 10
     end
     def initializeButton
-        """
-        # start
-        buttonStartLQ = TkButton.new(:text=> 'start(+Learn+Qvalue)')
-        buttonStartLQ.command {
-            @acrobot.initializeArms()
-            @pongoIsAlive = true
-            @learning = true
-            @qvalue = true
-        }
-        buttonStartLQ.pack(:side=>'right')
-
-        # restart (not learning)
-        buttonStartQ = TkButton.new(:text=> 'start(-Learn+Qvalue)')
-        buttonStartQ.command {
-            @acrobot.initializeArms()
-            @learning = false
-            @qvalue = true
-            @pongoIsAlive = true
-        }
-        buttonStartQ.pack(:side=>'right')
-
-        # restart (not learning)
-        buttonStart = TkButton.new(:text=> 'start(-Learn-Qvalue)')
-        buttonStart.command {
-            @acrobot.initializeArms()
-            @learning = false
-            @qvalue = false
-            @pongoIsAlive = true
-        }
-        buttonStart.pack(:side=>'right')
-        """
-
         # stop
         buttonStop = TkButton.new(:text=> 'stop')
         buttonStop.command {
@@ -116,24 +92,27 @@ class Simulation
         buttonPower.pack(:side=>'right')
     end
     def initializeLabel()
+        font = TkFont.new(['Melno',14,['bold']])
         @labelEpisode = TkLabel.new(:text=> @episode.to_s)
         @labelEpisode.pack(:side=>'right')
         @labelStopwatch = TkLabel.new(:text=> @currStopwatch.to_s)
         @labelStopwatch.pack(:side=>'right')
         @labelCurrInput = TkLabel.new(:text=> '')
         @labelCurrInput.pack(:side=>'left')
-        @labelCurrQValue = TkLabel.new(:text=> '')
+        @labelCurrQValue = TkLabel.new(:text=> '', :font=>font)
         @labelCurrQValue.pack(:side=>'left')
-        @labelCurrNewQValue = TkLabel.new(:text=> '')
+        @labelCurrNewQValue = TkLabel.new(:text=> '',:font=>font)
         @labelCurrNewQValue.pack(:side=>'left')
         @labelCurrInputA = TkLabel.new(:text=> '')
         @labelCurrInputA.pack(:side=>'left')
-        @labelCurrQValueA = TkLabel.new(:text=> '')
+        @labelCurrQValueA = TkLabel.new(:text=> '',:font=>font)
         @labelCurrQValueA.pack(:side=>'left')
         @labelCurrInputB = TkLabel.new(:text=> '')
         @labelCurrInputB.pack(:side=>'left')
-        @labelCurrQValueB = TkLabel.new(:text=> '')
+        @labelCurrQValueB = TkLabel.new(:text=> '',:font=>font)
         @labelCurrQValueB.pack(:side=>'left')
+        @labelDirection = TkLabel.new(:text=> '',:font=>font)
+        @labelDirection.pack(:side=>'left')
     end
 
     def resetArms()
@@ -155,9 +134,12 @@ class Simulation
         log()
         resetArms()
         @episode += 1
-        @labelEpisode.text = 'Episode: ' + @episode.to_s
-        @labelEpisode.pack()
+        if @enableTk then
+            @labelEpisode.text = 'Episode: ' + @episode.to_s
+            @labelEpisode.pack()
+        end
         @currStopwatch = 1
+        @randomSelectAction += 1
     end
     def log()
         # Learning Curves
@@ -199,16 +181,18 @@ class Simulation
         end
         f.close()
     end
+    def start(sleepSec)
+        yield
+        sleep sleepSec
+    end
     def run()
-        TkTimer.start(@tkTimerInterval) do |timer|
+        start(@tkTimerInterval/1000.0) do ||
             begin
                 APEngine.step
                 APEngine.draw
             rescue
                 APEngine.log("#{$!.message}\n#{$!.backtrace.join("\n")}")
             end
-            @acrobot.joint3.add_force(Pongo::VectorForce.new(false,100,0))
-            next
             begin
                 # 実行時間
                 if @currStopwatch == nil then
@@ -216,8 +200,10 @@ class Simulation
                 elsif @currStopwatch >= @timeLimit*(1000/@tkTimerInterval) then
                     reset()
                 end
-                @labelStopwatch.text = 'time: ' + @currStopwatch.to_s
-                @labelStopwatch.pack()
+                if @enableTk then
+                    @labelStopwatch.text = 'time: ' + @currStopwatch.to_s
+                    @labelStopwatch.pack()
+                end
 
                 # アクロボットのパラメータ表示
                 @currGlobalRads = @acrobot.getGlobalRadiusAtArms()
@@ -226,67 +212,41 @@ class Simulation
                 vectorSpeeds = @acrobot.getVectorSpeedAtArms()
                 angularVelocitys = getAngularVelocity().map {|v|v=normalizeAngularVelocity(v)}
 
-                # 左画面右画面判定
-                if @acrobot.joint2.curr.x < @windowWidth / 2 then
-                    @sdnn = @sdnnLeft
-                    puts "***sdnn LEFT***"
-                elsif @acrobot.joint2.curr.x > @windowWidth / 2 then
-                    @sdnn = @sdnnRight
-                    puts "***sdnn RIGHT***"
-                else
-                    if rand(2) == 1 then
-                        @sdnn = @sdnnLeft
-                        puts "***sdnn LEFT***"
-                    else
-                        @sdnn = @sdnnRight
-                        puts "***sdnn RIGHT***"
-                    end
-                end
-
                 """
                 SDNN
                 """
                 rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
-                input = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
+                @currInput = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
                 # tk
-                @labelCurrInput.text = input.join(",") + ":"
-                """
-                if @nextRad == nil then
-                    @nextRad, maxQValue = selectAction(input)
-                end
-                """
                 # @sdnnIntervalごとにチェック
-                #if isGoal()  or @currGlobalRads[1] % @sdnnInterval == 0 then 
-                #if isGoal() or @currStopwatch % 20 == 0 then
-                #if isGoal() or (speeds[1] <= 1 or speeds[0] <= 1) then
-                if isGoal() or @currGlobalRads[0] % @sdnnInterval == 0 or @currGlobalRads[1] % @sdnnInterval == 0 then 
-                #if isGoal() or @currStopwatch == 0 or @nextRad[1] == rads[1] then
-                    #rads = @currGlobalRads.map {|v|v=normalizationGlobalRadians(v)}
-
-                    if @prevInput == nil or @prevInput != input then
-                    #if true then
-                        @prevInput = input
-                        # 現在の行動価値を取得
-                        qValue = readSdnn(input, true)
-                        @labelCurrQValue.text = qValue.to_s
-                        # 次の行動を選択
-                        @nextRad, maxQValue = selectAction(input)
-                        # トルクを与える
-                        addForce(@currGlobalRads[1], @nextRad)
+                if isGoal() or @currStopwatch % 20 == 0 then
+                    # 次の行動を選択
+                    direction, @currQValue, @currSdnn = selectAction(@currInput)
+                    if @enableTk then
+                        @labelCurrInput.text = "Input:" + @currInput.join(",") + ":"
+                        @labelCurrQValue.text = "Curr:"+@currQValue.to_s
+                    end
+                    # トルクを与える
+                    addForce(direction)
+                    if @prevInput != nil then
                         reward = 0
                         if isGoal() then
                             reward = @sdnnReward
                         elsif isBad() then
                             reward = -5
                         end
-                        newQValue = learningSdnn(input, qValue, reward, maxQValue)
+                        newQValue = learningSdnn(@prevSdnn, @prevInput, @prevQValue, @currQValue, reward)
                         # tk
-                        @labelCurrNewQValue.text = newQValue.to_s
-            #            if isGoal() and @currStopwatch >= @timeLimit*(1000/@tkTimerInterval) then
-                        if isGoal()then
-                            reset()
+                        if @enableTk then
+                            @labelCurrNewQValue.text = "New:"+newQValue.to_s
                         end
                     end
+                    if isGoal()then
+                        reset()
+                    end
+                    @prevInput = @currInput
+                    @prevQValue = @currQValue
+                    @prevSdnn = @currSdnn
                     @prevGlobalRads = @currGlobalRads
                 end
                 if @prevGlobalRads == [] then
@@ -303,80 +263,65 @@ class Simulation
                 puts($!)
             end
         end
-        Tk.mainloop
+        run()
     end
-    def readSdnn(input, dump=false)
-        qValue = @sdnn.read(input)
+    def readSdnn(sdnn, input, dump=false)
+        qValue = sdnn.read(input)
         if dump then dumpSdnn(input, qValue) end
         return qValue
     end
-    def learningSdnn(input, oldQValue, reward, maxQValue=nil)
+    def learningSdnn(sdnn, input, oldQValue, maxQValue, reward)
         teacher = @qLearning.getNewQValue(oldQValue, reward, maxQValue).to_i
         puts teacher
-        @sdnn.learning(input, teacher)
-        newQValue = 0
-        #newQValue = readSdnn(input, true)
+        sdnn.learning(input, teacher)
+        newQValue = readSdnn(sdnn, input, true)
         return newQValue
     end
-    def selectAction(nowInput)
-        inputA = []
-        inputB = []
-        inputA += nowInput
-        inputB += nowInput
-        resultA = @currGlobalRads[1]
-        resultB = @currGlobalRads[1]
-        # 次の状態の行動価値を取得
-        if nowInput[0] == 0 and nowInput[0] then
-            inputA[0] += 1
-            inputB[0] += 1
-            inputA[1] += 1
-            inputB[1] += 1
-            resultA += @sdnnInterval
-            resultB += @sdnnInterval
-            @sdnn = @sdnnRight
-            qValueA = readSdnn(inputA, true)
-            @sdnn = @sdnnLeft
-            qValueB = readSdnn(inputB, true)
-        else
-            inputA[0] += 1
-            inputA[1] += 1
-            resultA += @sdnnInterval
-            qValueA = readSdnn(inputA, true)
-            if inputB[1] >= 1 then
-                inputB[0] -= 1
-                inputB[1] -= 1
-                resultB -= @sdnnInterval
-            end
-            qValueB = readSdnn(inputB, true)
+    def selectAction(input)
+        direction = ""
+        maxQValue = 0
+        currSdnn = nil
+        # 現在の行動価値を取得
+        qValueRight = readSdnn(@sdnnRight, input, true)
+        qValueLeft = readSdnn(@sdnnLeft, input, true)
+        # ランダム性
+        isRandom = false
+        if rand(@randomSelectAction) == 0 then
+            isRandom = true
         end
-        # tk
-        @labelCurrInputA.text = inputA.join(",") + ":"
-        @labelCurrQValueA.text = qValueA.to_s
-        @labelCurrInputB.text = inputB.join(",") + ":"
-        @labelCurrQValueB.text = qValueB.to_s
-        # 行動価値が大きい方を選択
-        if qValueA < qValueB then
-            @sdnn = @sdnnLeft
-            return resultB, qValueB
-        elsif qValueA > qValueB then
-            @sdnn = @sdnnRight
-            return resultA, qValueA
-        else
+        p ['isRandom', isRandom]
+        # 行動価値の比較
+        if qValueRight > qValueLeft and isRandom == false then
+            direction = "R"
+            maxQValue = qValueRight
+            currSdnn = @sdnnRight
+        elsif qValueLeft > qValueRight and isRandom == false then
+            direction = "L"
+            maxQValue = qValueLeft
+            currSdnn = @sdnnLeft
+        elsif
             if rand(2) == 1 then
-                @sdnn = @sdnnRight
-                return resultA, qValueA
+                direction = "R"
+                maxQValue = qValueRight
+                currSdnn = @sdnnRight
             else
-                @sdnn = @sdnnLeft
-                return resultB, qValueB
+                direction = "L"
+                maxQValue = qValueLeft
+                currSdnn = @sdnnLeft
             end
         end
+        if @enableTk then
+            @labelCurrQValueA.text = "R:" + qValueRight.to_s
+            @labelCurrQValueB.text = "L:"+qValueLeft.to_s
+            @labelDirection.text = "Direction:"+direction
+        end
+        return direction, maxQValue, currSdnn
     end
     def normalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
         v /= tmp
-        v /= 50
+        v /= 8
         v += 50
-        p ['av',v]
         # normalize
         # 0...50の範囲で表現できるように
         return v.to_i
@@ -384,7 +329,7 @@ class Simulation
     def denormalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
         v -= 50
-        v *= 50
+        v *= 8
         v *= tmp
         return v
     end
@@ -395,7 +340,7 @@ class Simulation
             moveValue = 0 
             if @currGlobalRads[i] <= @prevGlobalRads[i] then
                 moveValue = @prevGlobalRads[i] - @currGlobalRads[i]
-                moveValue *= -5
+                moveValue *= -1
             elsif @currGlobalRads[i] >= @prevGlobalRads[i] then
                 moveValue = @currGlobalRads[i] - @prevGlobalRads[i]
             end
@@ -412,6 +357,7 @@ class Simulation
             moveValue = @currGlobalRads[0] - @prevGlobalRads[0]
         end
         if moveValue < 1 then
+            puts "BAD!!"
             return true
         else
             return false
@@ -425,63 +371,47 @@ class Simulation
             return false
         end
     end
-    def addForce(oldRad, newRad)
-        return
-        p [oldRad, newRad]
-        vectorStr = ''
+    def addForce(direction)
+        globalRad2 = @currGlobalRads[1]
+        p ['globalRad2',globalRad2]
         vectorX = 0
         vectorY = 0
-        if newRad < oldRad then
-            vectorStr = "L"
-        elsif newRad > oldRad then
-            vectorStr = "R"
-        else
-            r = rand(2)
-            if r == 1 then
-                vectorStr = "L"
-            else
-                vectorStr = "R"
-            end
-        end
-        if vectorStr == "R" then
-            if oldRad >= 0 and oldRad < 90 then
+        if direction == "R" then
+            if globalRad2 >= 0 and globalRad2 < 90 then
                 vectorX = 1
                 vectorY = 1
-            elsif oldRad >= 90 and oldRad < 180 then
+            elsif globalRad2 >= 90 and globalRad2 < 180 then
                 vectorX = -1
                 vectorY = 1
-            elsif oldRad >= 180 and oldRad < 270 then
+            elsif globalRad2 >= 180 and globalRad2 < 270 then
                 vectorX = -1
                 vectorY = -1
-            elsif oldRad >= 270 and oldRad < 360 then
+            elsif globalRad2 >= 270 and globalRad2 < 360 then
                 vectorX = 1
                 vectorY = -1
             end
-        elsif vectorStr == "L" then
-            if oldRad == 0 then
+        elsif direction == "L" then
+            if globalRad2 == 0 then
                 vectorX = -1
                 vectorY = 1
-            elsif oldRad > 0 and oldRad <= 90 then
+            elsif globalRad2 > 0 and globalRad2 <= 90 then
                 vectorX = -1
                 vectorY = -1
-            elsif oldRad > 90 and oldRad <= 180 then
+            elsif globalRad2 > 90 and globalRad2 <= 180 then
                 vectorX = 1
                 vectorY = -1
-            elsif oldRad > 180 and oldRad <= 270 then
+            elsif globalRad2 > 180 and globalRad2 <= 270 then
                 vectorX = 1
                 vectorY = 1
-            elsif oldRad > 270 and oldRad <= 360 then
+            elsif globalRad2 > 270 and globalRad2 <= 360 then
                 vectorX = -1
                 vectorY = 1
             end
         end
-        p ['vectorStr', vectorStr]
-        p ['vectorX', vectorX]
-        p ['vectorY', vectorY]
-        v = @acrobot.joint3.velocity
-        v = Pongo::Vector.new(0,0)
-        @acrobot.joint3.velocity = Pongo::Vector.new(v.x + vectorX * @speedJoint3,
-                                                     v.y + vectorY * @speedJoint3)
+        vector = Pongo::VectorForce.new(false,
+                                        vectorX * @force,
+                                        vectorY * @force)
+        @acrobot.joint3.add_force(vector)
         return 
     end
     def normalizationGlobalRadians(globalRadians)

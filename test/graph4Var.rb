@@ -75,13 +75,13 @@ class Graph4Var
                 color = colorFormat[3]
             elsif v == 50 then
                 color = colorFormat[4]
-            elsif v < 55 then
+            elsif v == 51 then
                 color = colorFormat[5]
-            elsif v < 60 then
+            elsif v == 52 then
                 color = colorFormat[6]
-            elsif v < 65 then
+            elsif v == 53 then
                 color = colorFormat[7]
-            elsif v >= 65 then
+            elsif v >= 54 then
                 color = colorFormat[8]
             end
             TkcRectangle.new(@canvas,plotX1,plotY1,plotX2,plotY2,:fill=>color)

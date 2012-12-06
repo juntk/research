@@ -1,9 +1,10 @@
 require 'mySymbol.rb'
 
 class Sdnn
-    attr_accessor :weightMiddle2End, :debug
+    attr_accessor :weightMiddle2End, :debug, :test
     def initialize()
-        @debug = true
+        @debug = false
+        @test = false
         """
         MySymbol
         """
@@ -24,7 +25,7 @@ class Sdnn
         # 素子数
         @numberOfElementAtMiddle = nil
         # 素子数 出力値として表現できる自然数の範囲
-        @numberOfElementAtEnd = 100
+        @numberOfElementAtEnd = 600
 
         # 重み
         @weightMiddle2End = []
@@ -250,20 +251,20 @@ class Sdnn
         学習
         """
         # 素子の重みを修正する回数＝教師値と回答の誤差
-        fixCount,fixCountVector = getErrorValue(teacher, answer)
+        fixCount,fixCountVector,fixFire = getErrorValue(teacher, answer)
         # 発火しやすさ
         fireDegrees = Array.new(@thresholdEnd.length)
         fireDegreeVectors = Array.new(@thresholdEnd.length)
+        fireFires = Array.new(@thresholdEnd.length)
         @thresholdEnd.each_with_index do |threshold, index|
             amount = @inputEndAmounts[index]
-            tmpDegree,tmpDegreeVector = getErrorValue(threshold,amount)
-            """
+            tmpDegree,tmpDegreeVector,tmpFire = getErrorValue(threshold,amount)
             # a
-            if tmpDegreeVector == fixCountVector then
+            if (fixCountVector == 1 and tmpFire == -1) or (fixCountVector == -1 and tmpFire == 1) then
                 fireDegrees[index] = tmpDegree
                 fireDegreeVectors[index] = tmpDegreeVector
+                fireFires[index] = tmpFire
             end
-            """
         end
         if @debug then
             p fireDegrees
@@ -272,7 +273,8 @@ class Sdnn
         """
         重みの修正
         """
-        fixCount.times do |t|
+        fixedCount = 0
+        while fixedCount < fixCount do
             # 修正しやすい素子を選択
             # 修正コスト
             min = nil
@@ -285,14 +287,15 @@ class Sdnn
             end
             # 修正しやすい素子の入力合計値としきい値の誤差
             fireDegree = fireDegrees[minIndex]
-            #a
-            """
-            fireDegrees[minIndex] = 0
-            """
+            fireDegrees[minIndex] = @numberOfElementAtEnd
+            if @debug then
+                p fireDegrees
+            end
 
             fireDegreeVector = fireDegreeVectors[minIndex]
             # 不感化された素子に繋がる重みは修正しない
             fixWeightCount = 0
+            #p @outputMiddle
             @outputMiddle.each do |value|
                 if value != 0 then fixWeightCount += 1 end
             end
@@ -301,24 +304,51 @@ class Sdnn
             # 誤差＝修正レート×修正できる重みの数
 
             # a
-            fireDegree
             # a end
             fixRate = @learningRate * (fireDegree / fixWeightCount)
+            #fixRate =  ((fireDegree) / fixWeightCount)
+            if @debug then
+                amount = 0
+                @outputMiddle.each do |v|
+                    @weightMiddle2End[minIndex].each do |w|
+                        amount += v * w
+                    end
+                end
+                p ['fire?',fireFires[minIndex]]
+                p ['thresholdEnd',@thresholdEnd[minIndex],'amount',amount]
+                p ['fireDegree',fireDegree,'fixWeightCount',fixWeightCount,'fixRate',fixRate]
+            end
             @weightMiddle2End[minIndex].each_with_index do |weight, index|
-                if @outputMiddle[index] == 1 then
-                    if fireDegreeVector == 1 then
+                if fixCountVector == 1 then
+                    if @outputMiddle[index] == 1 then
                         @weightMiddle2End[minIndex][index] += fixRate 
-                    elsif fireDegreeVector == -1 then
+                    elsif @outputMiddle[index] == -1 then
                         @weightMiddle2End[minIndex][index] -= fixRate 
                     end
-                elsif @outputMiddle[index] == -1 then
-                    if fireDegreeVector == 1 then
+                elsif fixCountVector == -1 then
+                    if @outputMiddle[index] == 1 then
                         @weightMiddle2End[minIndex][index] -= fixRate 
-                    elsif fireDegreeVector == -1 then
+                    elsif @outputMiddle[index] == -1 then
                         @weightMiddle2End[minIndex][index] += fixRate 
                     end
                 end
+                #p ['fireDegreeVector',fireDegreeVector]
             end
+            if fixCountVector == 1 then
+                @thresholdEnd[minIndex] -= @learningRate * (1)
+            else
+                @thresholdEnd[minIndex] -= @learningRate * (-1)
+            end
+            if @debug then
+                amount = 0
+                @outputMiddle.each do |v|
+                    @weightMiddle2End[minIndex].each do |w|
+                        amount += w * v
+                    end
+                end
+                p ['thresholdEnd',@thresholdEnd[minIndex],'amount',amount]
+            end
+            fixedCount +=1
         end
     end
     def getErrorValue(a, b)
@@ -327,63 +357,69 @@ class Sdnn
         """
         result = 0.0
         vector = 0
+        fire = 0
         where = ''
-        if a < 0 and b > 0 then
+        if a <= 0 and b >= 0 then
             result = -1 * a + b 
             vector = -1
+            fire = 1
             where = 'a'
         elsif a > 0 and b < 0 then
             result = a + -1 * b
             vector = 1
+            fire = -1
             where = 'b'
         elsif a < 0 and b < 0 then
-            if a > b then
+            if a >= b then
                 result = -1 * (b - a)
                 vector = 1
+                fire = -1
             else
                 result = -1 * (a - b)
                 vector = -1
+                fire = 1
             end
             where = 'c'
         elsif a > 0 and b > 0 then
-            if a > b then
+            if a >= b then
                 result = a - b
                 vector = 1
+                fire = -1
             else
                 result = b - a
                 vector = -1
+                fire = 1
             end
             where = 'd'
         else
-            if a > b then
+            if a >= b then
                 result = a - b
                 vector = 1
-            elsif a == b then
-                result = 0
-                vector = 0
+                fire = -1
             else
                 result = b - a
                 vector = -1
+                fire = 1
             end
             where = 'e'
         end
         if @debug then
             puts where
-            p [result, vector]
+            p [result, vector, fire]
         end
-        return result, vector
+        return result, vector, fire
     end
 end
 
 s = Sdnn.new
-if s.debug then
-    100.times do |t|
+if s.test then
+    1000.times do |t|
         input = [rand(60),rand(60),rand(60),rand(60)]
         p input
         p s.read(input)
         teacher = rand(40)
         p ['teacher: ',teacher]
         s.learning(input,teacher)
-        p s.read(input)
+        p ['learning: ', s.read(input)]
     end
 end

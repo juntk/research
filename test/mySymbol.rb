@@ -4,7 +4,7 @@ class MySymbol
     def initialize()
         @symbolPath = 'Symbol.txt'
         # コード長
-        @symbolLength = 50
+        @symbolLength = 200
         # 表現可能な自然数 0 ... N
         @symbolCapacity = @symbolLength * 2
     end
