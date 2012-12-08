@@ -16,7 +16,7 @@ class Sdnn
         # 扱う変数(引数)の数
         @numberOfArgument = 4
         # 学習係数
-        @learningRate = 0.05
+        @learningRate = 0.1
 
         # 素子の出力値
         @outputFirst = []

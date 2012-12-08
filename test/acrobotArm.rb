@@ -9,9 +9,9 @@ class AcrobotArm
     attr_accessor :line_color, :fill_color
     def initialize
         # アームの長さ
-        @length = 100
+        @length = 16
         # アームの太さ
-        @height = 3
+        @height = 1
         # アームの重さ
         @mass = 1
         # 弾性

@@ -14,7 +14,12 @@ require 'acrobot.rb'
 include Pongo
 
 class Simulation
+    attr_accessor :enableTk
     def initialize
+        """
+        GUI
+        """
+        @enableTk = true
         """
         Acrobot
         """
@@ -32,17 +37,21 @@ class Simulation
         @symbol = MySymbol.new
         @qLearning = BasicQLearning.new
         @sdnnReward = 10
-        @sdnnInterval = 4
+        @sdnnInterval = 2
 
         """
         Pongo
         """
-        root = TkRoot.new { title 'Acrobot' }
-        @canvas = TkCanvas.new(root, :width=>@windowWidth, :height=>@windowHeight)
-        @canvas.pack
-        @buf = []
         APEngine.setup
-        APEngine.renderer = Renderer::TkRenderer.new(@canvas)
+        if @enableTk then
+            root = TkRoot.new { title 'Acrobot' }
+            @canvas = TkCanvas.new(root, :width=>@windowWidth, :height=>@windowHeight)
+            @canvas.pack
+            @buf = []
+            APEngine.renderer = Renderer::TkRenderer.new(@canvas)
+        else
+            APEngine.renderer = Renderer::Renderer.new()
+        end
         APEngine.logger = Logger::StandardLogger.new
         APEngine.add_force(VectorForce.new(false,0 , @acrobot.env.gravity))
         APEngine.damping = @acrobot.env.damping
@@ -59,9 +68,8 @@ class Simulation
         """
         シミュレーション
         """
-        @tkTimerInterval = 10
-        @enableTk = false
-        @timeLimit = 50
+        @tkTimerInterval = 67
+        @timeLimit = 5000
         @currStopwatch = nil
         @currInput = nil
         @prevInput = nil
@@ -71,23 +79,29 @@ class Simulation
         @currSdnn = nil
         @currGlobalRads = []
         @prevGlobalRads = [180,180]
-        @force =9.8
+        @force = 9.8
         @episode = 0
         @episodeTime = []
-        @randomSelectAction = 10
+        @randomSelectAction = 11
     end
     def initializeButton
         # stop
-        buttonStop = TkButton.new(:text=> 'stop')
+        buttonStop = TkButton.new(:text=> 'stopLearning')
         buttonStop.command {
-            @pongoIsAlive = false
+            @isStopLearning = true
         }
         buttonStop.pack(:side=>'right')
         
         # power
-        buttonPower = TkButton.new(:text=> 'power')
+        buttonPower = TkButton.new(:text=> 'powerR')
         buttonPower.command {
-            @acrobot.joint3.velocity = Pongo::Vector.new(1,1)
+            addForce("R")
+        }
+        buttonPower.pack(:side=>'right')
+        # power
+        buttonPower = TkButton.new(:text=> 'powerL')
+        buttonPower.command {
+            addForce("L")
         }
         buttonPower.pack(:side=>'right')
     end
@@ -138,36 +152,49 @@ class Simulation
             @labelEpisode.text = 'Episode: ' + @episode.to_s
             @labelEpisode.pack()
         end
+        path = 'logLearningCurvesOnly.txt'
+        if File.exist?(path) then
+            File.delete(path)
+        end
         @currStopwatch = 1
-        @randomSelectAction += 1
+        @randomSelectAction -= 1
     end
     def log()
         # Learning Curves
         strLC = ""
+        str = ""
         if @currStopwatch == nil then
             strLC += "Date: " + Time.now.to_s + "\n"
         else
-            strLC += @episode.to_s + "," + @currStopwatch.to_s + "\n"
+            str = @episode.to_s + "," + @currStopwatch.to_s + "\n"
+            strLC += str
         end
         f = open('logLearningCurves.txt','a')
         f.write(strLC)
         f.close()
+        path = 'logLearningCurvesOnly.txt'
+        af = open(path,'a')
+        af.write(str)
+        af.close()
     end
     def logQValue()
         puts "logQValue()"
-        numRad1 = 180 / @sdnnInterval
-        numRad2 = 180 / @sdnnInterval
-        angularVelocity = [0,20,30,40, 50, 60,70,80,90,99] # => [-180, 0, 180]
+        numRad1 = ((180 / @sdnnInterval))
+        numRad2 = ((180 / @sdnnInterval))
+        angularVelocity = [22,50,77] # => [-180, 0, 180]
         input = []
         str = "Date: " + Time.now.to_s + "\n"
         f = open('logQValue.txt', 'a')
+        af = open('logQValueOnly.txt', 'w')
         f.write(str)
         angularVelocity.each do |v|
             angularVelocity.each do |v2|
                 numRad1.times do |r1|
                     numRad2.times do |r2|
                         input = [r1, r2, v, v2]
-                        qValue = readSdnn(input, true)
+                        qValueRight = readSdnn(@sdnnRight,input, true)
+                        qValueLeft = readSdnn(@sdnnLeft,input, true)
+                        qValue = qValueRight + qValueLeft
                         str = ''
                         input.each_with_index do |x, i|
                             str += x.to_s
@@ -175,18 +202,21 @@ class Simulation
                         end
                         str += qValue.to_s + "\n"
                         f.write(str)
+                        af.write(str)
                     end
                 end
             end
         end
         f.close()
+        af.close()
     end
     def start(sleepSec)
         yield
         sleep sleepSec
     end
     def run()
-        start(@tkTimerInterval/1000.0) do ||
+        TkTimer.start(@tkTimerInterval) do |timer|
+        #start(@tkTimerInterval/1000.0) do ||
             begin
                 APEngine.step
                 APEngine.draw
@@ -217,9 +247,10 @@ class Simulation
                 """
                 rads = @currRads.map {|v|v=normalizationGlobalRadians(v)}
                 @currInput = [rads[0], rads[1], angularVelocitys[0], angularVelocitys[1]]
+                p @currInput
                 # tk
                 # @sdnnIntervalごとにチェック
-                if isGoal() or @currStopwatch % 20 == 0 then
+                if (isGoal() or @currStopwatch.to_i != @prevStopwatch.to_i) and @isStopLearning != true then
                     # 次の行動を選択
                     direction, @currQValue, @currSdnn = selectAction(@currInput)
                     if @enableTk then
@@ -232,7 +263,7 @@ class Simulation
                         reward = 0
                         if isGoal() then
                             reward = @sdnnReward
-                        elsif isBad() then
+                        elsif isBad(rads) then
                             reward = -5
                         end
                         newQValue = learningSdnn(@prevSdnn, @prevInput, @prevQValue, @currQValue, reward)
@@ -253,17 +284,21 @@ class Simulation
                     @prevGlobalRads = @currGlobalRads
                 end
                 @prevStopwatch = @currStopwatch
-                @currStopwatch += 1
+                @currStopwatch += 0.01*@tkTimerInterval
                 
                 if @episode > 100 then
                     logQValue()
-                    return
+                    return 'end'
                 end
             rescue
                 puts($!)
             end
         end
-        run()
+        if @enableTk then
+            Tk.mainloop
+        else
+            return 'loop'
+        end
     end
     def readSdnn(sdnn, input, dump=false)
         qValue = sdnn.read(input)
@@ -274,7 +309,8 @@ class Simulation
         teacher = @qLearning.getNewQValue(oldQValue, reward, maxQValue).to_i
         puts teacher
         sdnn.learning(input, teacher)
-        newQValue = readSdnn(sdnn, input, true)
+        newQValue = 0
+        #newQValue = readSdnn(sdnn, input, true)
         return newQValue
     end
     def selectAction(input)
@@ -282,11 +318,23 @@ class Simulation
         maxQValue = 0
         currSdnn = nil
         # 現在の行動価値を取得
-        qValueRight = readSdnn(@sdnnRight, input, true)
-        qValueLeft = readSdnn(@sdnnLeft, input, true)
+        qValue = []
+        qValue << Thread.new{['R',readSdnn(@sdnnRight, input, true)]}
+        qValue << Thread.new{['L',readSdnn(@sdnnLeft, input, true)]}
+        qValueRight = 0
+        qValueLeft = 0
+        qValue.each do |v|
+            if v.value[0].to_s == "R" then
+                qValueRight = v.value[1]
+            elsif v.value[0].to_s == 'L' then
+                qValueLeft = v.value[1]
+            end
+        end
+        p [qValueRight, qValueLeft]
         # ランダム性
         isRandom = false
-        if rand(@randomSelectAction) == 0 then
+        percents = [@randomSelectAction, 100-@randomSelectAction]
+        if calcGacha(percents) == @randomSelectAction then
             isRandom = true
         end
         p ['isRandom', isRandom]
@@ -320,7 +368,7 @@ class Simulation
     def normalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
         v /= tmp
-        v /= 8
+        v /= 1
         v += 50
         # normalize
         # 0...50の範囲で表現できるように
@@ -329,7 +377,7 @@ class Simulation
     def denormalizeAngularVelocity(v)
         tmp = 1000 / @tkTimerInterval
         v -= 50
-        v *= 8
+        v *= 1
         v *= tmp
         return v
     end
@@ -349,14 +397,8 @@ class Simulation
         end
         return result
     end
-    def isBad()
-        moveValue = 0 
-        if @currGlobalRads[0] <= @prevGlobalRads[0] then
-            moveValue = @prevGlobalRads[0] - @currGlobalRads[0]
-        elsif @currGlobalRads[0] >= @prevGlobalRads[0] then
-            moveValue = @currGlobalRads[0] - @prevGlobalRads[0]
-        end
-        if moveValue < 1 then
+    def isBad(rads)
+        if rads[0] < 1 then
             puts "BAD!!"
             return true
         else
@@ -365,11 +407,32 @@ class Simulation
     end
     def isGoal()
         goal = @acrobot.joint1.curr.y - @acrobot.arm1.length
-        if @acrobot.joint3.curr.y < goal then
+        if @acrobot.joint3.curr.y <= goal then
             return true
         else
             return false
         end
+    end
+    def calcGacha(percents)
+        hit_per = 0
+        max = 0
+
+        # 初期確率合計
+        percents.each do |per|
+         max += per
+        end
+
+        for i in 0..(percents.size-1)
+         choice_per = rand(max)
+         if choice_per < percents[i] || i == percents.size-1
+           hit_per = percents[i]
+           break
+         else
+           max -= percents[i]
+         end
+        end
+
+        hit_per
     end
     def addForce(direction)
         globalRad2 = @currGlobalRads[1]
@@ -460,5 +523,12 @@ end
 
 Readline.readline('',true)
 simulation = Simulation.new
+if simulation.enableTk then
 simulation.run()
+else
+    status = 'start'
+    while status != 'end' do
+        simulation.run()
+    end
+end
 simulation.logQValue()
